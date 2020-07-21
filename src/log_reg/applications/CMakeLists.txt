@@ -1,13 +1,13 @@
 cmake_minimum_required(VERSION 3.0)
 
-add_executable(async_log_reg async_log_reg.cpp)
-target_include_directories(async_log_reg
+add_executable(worker worker.cpp)
+target_include_directories(worker
   PUBLIC
   ${logistic_regression_SOURCE_DIR})
-target_link_libraries(async_log_reg coordinator utils)
+target_link_libraries(worker coordinator utils)
 
-add_executable(parameter_server parameter_server.cpp)
-target_include_directories(parameter_server
+add_executable(server server.cpp)
+target_include_directories(server
   PUBLIC
   ${logistic_regression_SOURCE_DIR})
-target_link_libraries(parameter_server coordinator logistic_regression utils)
+target_link_libraries(server coordinator logistic_regression utils)
