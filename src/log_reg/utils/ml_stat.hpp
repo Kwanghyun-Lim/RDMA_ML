@@ -1,7 +1,7 @@
 #pragma once
 
 #include "coordinator/ml_sst.hpp"
-#include "multinomial_log_reg.hpp"
+#include "log_reg.hpp"
 
 namespace utils {
 class ml_stat_t {
@@ -54,7 +54,7 @@ public:
   void compute_mean();
   void compute_std();
   void compute_err();
-  void grid_search_helper(std::string target_dir, bool svrg);
+  void grid_search_helper(std::string target_dir);
   void fout_log_mean_per_epoch();
   void fout_log_err_per_epoch();
   void fout_analysis_mean_per_epoch();

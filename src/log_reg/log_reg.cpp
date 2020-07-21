@@ -83,7 +83,7 @@ double log_reg::multinomial_log_reg::training_loss() {
 double log_reg::multinomial_log_reg::get_loss_opt() const {
   std::ifstream loss_opt_file;
   std::string worker_dir = std::to_string(dataset.num_parts) + "workers";
-  loss_opt_file.open(dataset.data_path + "/" + worker_dir + "/svrg_loss_opt.txt");
+  loss_opt_file.open(dataset.data_path + "/svrg_loss_opt.txt");
   std::string loss_opt_str;
   loss_opt_file >> loss_opt_str;
   double loss_opt = std::stod(loss_opt_str);
@@ -275,10 +275,7 @@ double log_reg::multinomial_log_reg::gradient_norm() {
 
 double log_reg::multinomial_log_reg::distance_to_optimum() {
   cnpy::NpyArray arr; 
-  std::string worker_dir = std::to_string(dataset.num_parts) + "workers";
-  arr = cnpy::npy_load(dataset.data_path + "/" + worker_dir + "/svrg_w_opt.npy");
-  // Be careful that arr.data<double>() is std::shared_ptr, which means the allocated memory for data will be detroyed when out of scope.
-  // That's why we didn't seperate above codes as a seperate function.
+  arr = cnpy::npy_load(dataset.data_path + "/svrg_w_opt.npy");
   double* model_opt = arr.data<double>();
   double norm = 0.0;
   for (size_t i = 0; i < get_model_size(); ++i) {
@@ -290,13 +287,7 @@ double log_reg::multinomial_log_reg::distance_to_optimum() {
 
 void log_reg::multinomial_log_reg::save_npy_model() const {
   std::string worker_dir = std::to_string(dataset.num_parts) + "workers";
-  if (svrg) {
-    std::cout << "Saving a new svrg_w_opt.npy..." << std::endl;
-    cnpy::npy_save(dataset.data_path + "/" + worker_dir + "/svrg_w_opt.npy",
-		   model, {dataset.training_labels.num_classes, dataset.training_images.num_pixels}, "w");
-  } else {
-    std::cout << "Saving a new sgd_w_opt.npy..." << std::endl;
-    cnpy::npy_save(dataset.data_path + "/" + worker_dir + "/sgd_w_opt.npy",
-		   model, {dataset.training_labels.num_classes, dataset.training_images.num_pixels}, "w");
-  }
+  std::cout << "Saving a new sgd_w_opt.npy..." << std::endl;
+  cnpy::npy_save(dataset.data_path + "/" + worker_dir + "/sgd_w_opt.npy",
+		 model, {dataset.training_labels.num_classes, dataset.training_images.num_pixels}, "w");
 }

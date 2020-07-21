@@ -5,7 +5,7 @@
 #include <memory>
 
 #include "ml_sst.hpp"
-#include "multinomial_log_reg.hpp"
+#include "log_reg.hpp"
 #include "tcp.hpp"
 
 namespace coordinator {

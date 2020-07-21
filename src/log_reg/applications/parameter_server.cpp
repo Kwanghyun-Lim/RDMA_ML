@@ -37,7 +37,6 @@ int main(int argc, char* argv[]) {
     uint32_t aggregate_batch_size = std::stod(argv[6]);
     const uint32_t num_epochs = atoi(argv[7]);
     const uint32_t num_nodes = atoi(argv[8]);
-    std::string worker_dir = std::to_string(num_nodes - 1) + "workers";
     const uint32_t num_inner_epochs = 2;
     const uint32_t num_trials = atoi(argv[9]);
     const uint32_t broadcast_completion_period = atoi(argv[10]);
@@ -214,8 +213,8 @@ int main(int argc, char* argv[]) {
 	  ml_stats.compute_err();
     
 	  // Write a file with hyper params and store model when cur_loss < prev_loss
-	  std::string target_dir = data_directory + "/" + data + "/" + worker_dir;
-	  ml_stats.grid_search_helper(target_dir, svrg);
+	  std::string target_dir = data_directory + "/" + data;
+	  ml_stats.grid_search_helper(target_dir);
 	  ml_stats.fout_log_mean_per_epoch();
 	  ml_stats.fout_log_err_per_epoch();
 	  ml_stats.fout_analysis_mean_per_epoch();

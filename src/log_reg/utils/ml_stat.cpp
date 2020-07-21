@@ -320,7 +320,7 @@ void utils::ml_stats_t::compute_err() {
   }
 }
   
-void utils::ml_stats_t::grid_search_helper(std::string target_dir, bool svrg) {
+void utils::ml_stats_t::grid_search_helper(std::string target_dir) {
     assert (ml_stat_vec.size() > 0);
     uint num_epochs = ml_stat_vec[0].num_epochs;
     std::ifstream prev_loss_opt_file;
@@ -328,14 +328,9 @@ void utils::ml_stats_t::grid_search_helper(std::string target_dir, bool svrg) {
     uint batch_size = ml_stat_vec[0].batch_size;
     double alpha = ml_stat_vec[0].alpha;
     double decay = ml_stat_vec[0].decay;
-    
-    if (svrg) {
-      prev_loss_opt_file.open(
-	   target_dir + "/svrg_loss_opt.txt");
-    } else {
-      prev_loss_opt_file.open(
-	   target_dir + "/sgd_loss_opt.txt");
-    }
+    std::string worker_dir = std::to_string(num_nodes - 1) + "workers";
+
+    prev_loss_opt_file.open(target_dir + "/" + worker_dir + "/sgd_loss_opt.txt");
     
     std::string prev_loss_opt_str;
     prev_loss_opt_file >> prev_loss_opt_str;
@@ -349,27 +344,16 @@ void utils::ml_stats_t::grid_search_helper(std::string target_dir, bool svrg) {
       std::cout << "Found better alpha " << alpha << " decay " << decay
 		<< " and aggregate_batch_size " << aggregate_batch_size << std::endl;
       
-      if (svrg) {
-    	std::ofstream svrg_alpha_opt_file(target_dir + "/svrg_alpha_opt.txt");
-    	svrg_alpha_opt_file << alpha;
-    	std::ofstream svrg_batch_opt_file(target_dir + "/svrg_batch_opt.txt");
-    	svrg_batch_opt_file << aggregate_batch_size;
-    	std::ofstream svrg_epoch_opt_file(target_dir + "/svrg_epoch_opt.txt");
-    	svrg_epoch_opt_file << num_epochs;
-    	std::ofstream svrg_loss_opt_file(target_dir + "/svrg_loss_opt.txt");
-    	svrg_loss_opt_file << cur_loss;
-      } else {
-    	std::ofstream sgd_alpha_opt_file(target_dir + "/sgd_alpha_opt.txt");
-    	sgd_alpha_opt_file << alpha;
-    	std::ofstream sgd_decay_opt_file(target_dir + "/sgd_decay_opt.txt");
-    	sgd_decay_opt_file << decay;
-    	std::ofstream sgd_batch_opt_file(target_dir + "/sgd_batch_opt.txt");
-    	sgd_batch_opt_file << aggregate_batch_size;
-    	std::ofstream sgd_epoch_opt_file(target_dir + "/sgd_epoch_opt.txt");
-    	sgd_epoch_opt_file << num_epochs;
-    	std::ofstream sgd_loss_opt_file(target_dir + "/sgd_loss_opt.txt");
-    	sgd_loss_opt_file << cur_loss;
-      }
+      std::ofstream sgd_alpha_opt_file(target_dir + "/" + worker_dir + "/sgd_alpha_opt.txt");
+      sgd_alpha_opt_file << alpha;
+      std::ofstream sgd_decay_opt_file(target_dir + "/" + worker_dir + "/sgd_decay_opt.txt");
+      sgd_decay_opt_file << decay;
+      std::ofstream sgd_batch_opt_file(target_dir + "/" + worker_dir + "/sgd_batch_opt.txt");
+      sgd_batch_opt_file << aggregate_batch_size;
+      std::ofstream sgd_epoch_opt_file(target_dir + "/" + worker_dir + "/sgd_epoch_opt.txt");
+      sgd_epoch_opt_file << num_epochs;
+      std::ofstream sgd_loss_opt_file(target_dir + "/" + worker_dir + "/sgd_loss_opt.txt");
+      sgd_loss_opt_file << cur_loss;
     } else {
       std::cout << "cur_loss " << cur_loss
 		<< " > prev_loss_opt " << prev_loss_opt << std::endl;
@@ -381,7 +365,9 @@ void utils::ml_stats_t::grid_search_helper(std::string target_dir, bool svrg) {
 
 double utils::ml_stats_t::get_loss_opt(std::string target_dir) {
   std::ifstream loss_opt_file;
-  loss_opt_file.open(target_dir + "/svrg_loss_opt.txt");
+  uint num_nodes = ml_stat_vec[0].num_nodes;
+  std::string worker_dir = std::to_string(num_nodes - 1) + "workers";
+  loss_opt_file.open(target_dir + "/" + worker_dir + "/svrg_loss_opt.txt");
   std::string loss_opt_str;
   loss_opt_file >> loss_opt_str;
   double loss_opt = std::stod(loss_opt_str);
