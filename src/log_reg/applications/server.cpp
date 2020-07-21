@@ -10,6 +10,7 @@
 #include <thread>
 #include <vector>
 
+#include "server.hpp"
 #include "coordinator/ml_sst.hpp"
 #include "coordinator/tcp.hpp"
 #include "coordinator/verbs.h"
@@ -83,118 +84,16 @@ int main(int argc, char* argv[]) {
         const size_t num_batches = m_log_reg.get_num_batches();
 
         sst::MLSST ml_sst(members, 0, m_log_reg.get_model_size());
-        m_log_reg.set_model_mem((double*)std::addressof(
-                ml_sst.model_or_gradient[0][0]));
-	std::vector<uint64_t> num_lost_gradients(num_nodes, 0);
+        m_log_reg.set_model_mem((double*)std::addressof(ml_sst.model_or_gradient[0][0]));
         utils::ml_stat_t ml_stat(trial_num, num_nodes, num_epochs,
 				 alpha, decay, batch_size,
-				 ml_sst, num_lost_gradients, m_log_reg);
+				 ml_sst, m_log_reg);
 	
-	volatile bool trial_finished = false;
-	std::atomic<uint64_t> num_broadcasts = 0;
-	// volatile uint64_t num_broadcasts = 0;
-	for (uint row = 1; row < num_nodes; ++row) {
-	  m_log_reg.push_back_to_grad_vec((double*)std::addressof(ml_sst.model_or_gradient[row][0]));
-	}
+	server::async_server server(m_log_reg, ml_sst, ml_stat);
+	server.train(num_epochs);
 	
-        struct timespec start_t, end_t;
-	std::queue<std::pair<std::pair<uint64_t, uint64_t>, uint32_t>> q;
-	auto model_update_broadcast_loop = [&ml_sst, &trial_finished, num_nodes,
-					    &num_epochs, &num_batches, &q,
-					    &num_broadcasts, &start_t, &end_t,
-					    &broadcast_completion_period,
-					    &num_lost_gradients,
-					    &m_log_reg]() mutable {
-					     pthread_setname_np(pthread_self(), ("model_update_broadcast_loop"));
-					     uint64_t t1 = 0;
-					     uint64_t t2 = 0;
-					     uint64_t t3 = 0;
-					     uint64_t t4 = 0;
-					     std::vector<uint32_t> target_nodes;
-
-					     while(!trial_finished) {
-					       for (uint row = 1; row < num_nodes; ++row) {
-						 if(ml_sst.last_round[0][row] < num_epochs * num_batches &&
-						    ml_sst.round[row] > ml_sst.last_round[0][row]) {
-						     // std::cout << "Detected worker " << row << " pushed "
-						     // << ml_sst.round[row] << " gradient." << std::endl;
-						     if(ml_sst.round[row] - ml_sst.last_round[0][row] > 1) {
-						       num_lost_gradients[row] += ml_sst.round[row] - ml_sst.last_round[0][row] - 1;
-						     }
-						     ml_sst.last_round[0][row] = ml_sst.round[row];
-						     
-						     clock_gettime(CLOCK_REALTIME, &end_t);
-						     t1 = (end_t.tv_sec - start_t.tv_sec) * 1e9
-						       + (end_t.tv_nsec - start_t.tv_nsec);
-
-						     m_log_reg.update_model(row);
-						     
-						     clock_gettime(CLOCK_REALTIME, &end_t);
-						     t2 = (end_t.tv_sec - start_t.tv_sec) * 1e9
-						       + (end_t.tv_nsec - start_t.tv_nsec);
-						     
-						     q.push({{t1, t2}, row});
-						     target_nodes.push_back(row);
-						     ml_sst.round[0]++;
-						 }
-					       }
-					       
-					       if(!target_nodes.empty()) {
-						 clock_gettime(CLOCK_REALTIME, &end_t);
-						 t3 = (end_t.tv_sec - start_t.tv_sec) * 1e9
-						   + (end_t.tv_nsec - start_t.tv_nsec);
-						 ml_sst.put_with_completion(target_nodes);
-
-						 clock_gettime(CLOCK_REALTIME, &end_t);
-						 t4 = (end_t.tv_sec - start_t.tv_sec) * 1e9
-						   + (end_t.tv_nsec - start_t.tv_nsec);
-						 num_broadcasts++;
-						 q.push({{t3, t4}, 0});
-						 target_nodes.clear();
-					       }
-					     }
-					   };
-	std::thread model_update_broadcast_thread = std::thread(model_update_broadcast_loop);
-        ml_sst.sync_with_members();
-	clock_gettime(CLOCK_REALTIME, &start_t);
-	std::cout << "clock reset" << std::endl;
-        struct timespec start_time, end_time;
-        for(size_t epoch_num = 0; epoch_num < num_epochs; ++epoch_num) {
-	  clock_gettime(CLOCK_REALTIME, &start_time);
-	  ml_sst.sync_with_members();
-	  clock_gettime(CLOCK_REALTIME, &end_time);
-	  uint64_t t5 = 0;
-	  uint64_t t6 = 0;
-					     
-	  clock_gettime(CLOCK_REALTIME, &end_t);
-	  t5 = (end_t.tv_sec - start_t.tv_sec) * 1e9
-	    + (end_t.tv_nsec - start_t.tv_nsec);
-
-	  double time_taken = (double)(end_time.tv_sec - start_time.tv_sec)
-	    + (end_time.tv_nsec - start_time.tv_nsec) / 1e9;
-	  ml_stat.initialize_epoch_parameters(epoch_num + 1, m_log_reg.get_model(),
-					      ml_sst, num_broadcasts,
-					      num_lost_gradients, time_taken);
-	  
-	  clock_gettime(CLOCK_REALTIME, &end_t);
-	  t6 = (end_t.tv_sec - start_t.tv_sec) * 1e9
-	    + (end_t.tv_nsec - start_t.tv_nsec);
-	  q.push({{t5, t6}, 100});
-	  
-	  ml_sst.sync_with_members();
-        }
-	
-	trial_finished = true;
-	model_update_broadcast_thread.join();
 	std::cout << "trial_num " << trial_num << " done." << std::endl;
 	std::cout << "Collecting results..." << std::endl;
-
-	std::ofstream server_log_file("server.log", std::ofstream::trunc);
-	while (!q.empty()) {
-	  std::pair<std::pair<uint64_t, uint64_t>, uint32_t> item = q.front();
-	  q.pop();
-	  server_log_file <<  item.first.first << " " << item.first.second << " " << item.second << std::endl;
-	}
 	
 	for(size_t epoch_num = 0; epoch_num < num_epochs + 1; ++epoch_num) {
 	  ml_stat.collect_results(epoch_num, m_log_reg);
@@ -205,6 +104,7 @@ int main(int argc, char* argv[]) {
 	ml_stat.fout_log_per_epoch();
 	ml_stat.fout_analysis_per_epoch();
 	ml_stat.fout_gradients_per_epoch();
+	ml_stat.fout_op_time_log();
         ml_sst.sync_with_members();
 
 	if (trial_num == num_trials - 1) {
@@ -224,4 +124,103 @@ int main(int argc, char* argv[]) {
 	  ml_sst.sync_with_members();
 	}
     }
+}
+
+server::async_server::async_server(log_reg::multinomial_log_reg& m_log_reg, sst::MLSST& ml_sst, utils::ml_stat_t& ml_stat) : m_log_reg(m_log_reg), ml_sst(ml_sst), ml_stat(ml_stat) {
+}
+
+void server::async_server::train(const size_t num_epochs) {
+  volatile bool trial_finished = false;
+  std::atomic<uint64_t> num_broadcasts = 0;
+  // volatile uint64_t num_broadcasts = 0;
+  for (uint row = 1; row < ml_sst.get_num_rows(); ++row) {
+    m_log_reg.push_back_to_grad_vec((double*)std::addressof(ml_sst.model_or_gradient[row][0]));
+  }
+	
+  struct timespec start_t, end_t;
+  auto model_update_broadcast_loop = [this, &trial_finished, num_epochs,
+				      &num_broadcasts, &start_t, &end_t]() mutable {
+				       const uint32_t num_nodes = ml_sst.get_num_rows();
+				       const size_t num_batches = m_log_reg.get_num_batches();
+
+				       pthread_setname_np(pthread_self(), ("update_broadcast"));
+				       uint64_t t1 = 0;
+				       uint64_t t2 = 0;
+				       uint64_t t3 = 0;
+				       uint64_t t4 = 0;
+				       std::vector<uint32_t> target_nodes;
+
+				       while(!trial_finished) {
+					 for (uint row = 1; row < num_nodes; ++row) {
+					   if(ml_sst.last_round[0][row] < num_epochs * num_batches &&
+					      ml_sst.round[row] > ml_sst.last_round[0][row]) {
+					     // std::cout << "Detected worker " << row << " pushed "
+					     // << ml_sst.round[row] << " gradient." << std::endl;
+					     if(ml_sst.round[row] - ml_sst.last_round[0][row] > 1) {
+					       ml_stat.num_lost_gradients_per_node[row] += ml_sst.round[row] - ml_sst.last_round[0][row] - 1;
+					     }
+					     ml_sst.last_round[0][row] = ml_sst.round[row];
+						     
+					     clock_gettime(CLOCK_REALTIME, &end_t);
+					     t1 = (end_t.tv_sec - start_t.tv_sec) * 1e9
+					       + (end_t.tv_nsec - start_t.tv_nsec);
+
+					     m_log_reg.update_model(row);
+						     
+					     clock_gettime(CLOCK_REALTIME, &end_t);
+					     t2 = (end_t.tv_sec - start_t.tv_sec) * 1e9
+					       + (end_t.tv_nsec - start_t.tv_nsec);
+						     
+					     ml_stat.op_time_log_q.push({{t1, t2}, row});
+					     target_nodes.push_back(row);
+					     ml_sst.round[0]++;
+					   }
+					 }
+					       
+					 if(!target_nodes.empty()) {
+					   clock_gettime(CLOCK_REALTIME, &end_t);
+					   t3 = (end_t.tv_sec - start_t.tv_sec) * 1e9
+					     + (end_t.tv_nsec - start_t.tv_nsec);
+					   ml_sst.put_with_completion(target_nodes);
+
+					   clock_gettime(CLOCK_REALTIME, &end_t);
+					   t4 = (end_t.tv_sec - start_t.tv_sec) * 1e9
+					     + (end_t.tv_nsec - start_t.tv_nsec);
+					   num_broadcasts++;
+					   ml_stat.op_time_log_q.push({{t3, t4}, 0});
+					   target_nodes.clear();
+					 }
+				       }
+				     };
+  std::thread model_update_broadcast_thread = std::thread(model_update_broadcast_loop);
+  ml_sst.sync_with_members();
+  clock_gettime(CLOCK_REALTIME, &start_t);
+  std::cout << "clock reset" << std::endl;
+  struct timespec start_time, end_time;
+  for(size_t epoch_num = 0; epoch_num < num_epochs; ++epoch_num) {
+    clock_gettime(CLOCK_REALTIME, &start_time);
+    ml_sst.sync_with_members();
+    clock_gettime(CLOCK_REALTIME, &end_time);
+    uint64_t t5 = 0;
+    uint64_t t6 = 0;
+					     
+    clock_gettime(CLOCK_REALTIME, &end_t);
+    t5 = (end_t.tv_sec - start_t.tv_sec) * 1e9
+      + (end_t.tv_nsec - start_t.tv_nsec);
+
+    double time_taken = (double)(end_time.tv_sec - start_time.tv_sec)
+      + (end_time.tv_nsec - start_time.tv_nsec) / 1e9;
+    ml_stat.initialize_epoch_parameters(epoch_num + 1, m_log_reg.get_model(),
+					ml_sst, num_broadcasts, time_taken);
+	  
+    clock_gettime(CLOCK_REALTIME, &end_t);
+    t6 = (end_t.tv_sec - start_t.tv_sec) * 1e9
+      + (end_t.tv_nsec - start_t.tv_nsec);
+    ml_stat.op_time_log_q.push({{t5, t6}, 100});
+	  
+    ml_sst.sync_with_members();
+  }
+	
+  trial_finished = true;
+  model_update_broadcast_thread.join();
 }

@@ -2,6 +2,7 @@
 
 #include "coordinator/ml_sst.hpp"
 #include "log_reg.hpp"
+#include <queue>
 
 namespace utils {
 class ml_stat_t {
@@ -11,19 +12,19 @@ public:
 	       uint32_t num_epochs, double alpha,
 	      double decay, double batch_size,
               const sst::MLSST& ml_sst,
-	      std::vector<uint64_t>& num_lost_gradients,
               log_reg::multinomial_log_reg& m_log_reg);
 
     void initialize_epoch_parameters(
             uint32_t epoch_num, double* model,
             const sst::MLSST& ml_sst, uint64_t num_broadcasts,
-	    std::vector<uint64_t>& num_lost_gradients, double time_taken);
+	    double time_taken);
     void collect_results(uint32_t epoch_num, log_reg::multinomial_log_reg& m_log_reg);
     void print_results();
     void fout_log_per_epoch();
     void fout_analysis_per_epoch();
     void fout_gradients_per_epoch();
-
+    void fout_op_time_log();
+  
     uint32_t trial_num;
     uint32_t num_nodes;
     uint32_t num_epochs;
@@ -38,6 +39,7 @@ public:
     // The first row of num_gradients_received is used for the sum of each worker's num_pushed gradients.
     std::vector<std::vector<double>> num_gradients_received;
     std::vector<std::vector<double>> num_lost_gradients;
+    std::vector<uint64_t> num_lost_gradients_per_node;
   
     std::vector<double> cumulative_time;
     std::vector<double> training_error;
@@ -45,6 +47,8 @@ public:
     std::vector<double> loss_gap;
     std::vector<double> dist_to_opt;
     std::vector<double> grad_norm;
+
+    std::queue<std::pair<std::pair<uint64_t, uint64_t>, uint32_t>> op_time_log_q;
 };
 
 class ml_stats_t {

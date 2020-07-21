@@ -23,14 +23,15 @@ utils::ml_stat_t::ml_stat_t(uint32_t num_nodes, uint32_t num_epochs) :
   test_error(num_epochs + 1, 0),
   loss_gap(num_epochs + 1, 0),
   dist_to_opt(num_epochs + 1, 0),
-  grad_norm(num_epochs + 1, 0) {
+  grad_norm(num_epochs + 1, 0),
+  num_lost_gradients_per_node(num_nodes, 0)
+{
 }
 
 utils::ml_stat_t::ml_stat_t(uint32_t trial_num, uint32_t num_nodes,
 	       uint32_t num_epochs, double alpha,
 	      double decay, double batch_size,
               const sst::MLSST& ml_sst,
-	      std::vector<uint64_t>& num_lost_gradients,
               log_reg::multinomial_log_reg& m_log_reg)
         : trial_num(trial_num),
           num_nodes(num_nodes),
@@ -49,7 +50,8 @@ utils::ml_stat_t::ml_stat_t(uint32_t trial_num, uint32_t num_nodes,
           test_error(num_epochs + 1, 0),
           loss_gap(num_epochs + 1, 0),
           dist_to_opt(num_epochs + 1, 0),
-          grad_norm(num_epochs + 1, 0) {
+          grad_norm(num_epochs + 1, 0),
+	  num_lost_gradients_per_node(num_nodes, 0) {
     for(uint epoch_num = 0; epoch_num < num_epochs + 1; ++epoch_num) {
         intermediate_models[epoch_num] = new double[model_size];
         for(uint i = 0; i < model_size; ++i) {
@@ -58,14 +60,13 @@ utils::ml_stat_t::ml_stat_t(uint32_t trial_num, uint32_t num_nodes,
     }
 
     initialize_epoch_parameters(0, m_log_reg.get_model(),
-				ml_sst, 0,
-				num_lost_gradients, 0);
+				ml_sst, 0, 0);
 }
 
 void utils::ml_stat_t::initialize_epoch_parameters(
         uint32_t epoch_num, double* model,
         const sst::MLSST& ml_sst, uint64_t num_broadcasts,
-	std::vector<uint64_t>& num_lost_gradients, double time_taken) {
+	double time_taken) {
     for(size_t i = 0; i < model_size; ++i) {
         intermediate_models[epoch_num][i] = model[i];
     }
@@ -79,7 +80,7 @@ void utils::ml_stat_t::initialize_epoch_parameters(
     for(uint node_num = 1; node_num < num_nodes; ++node_num) {
         num_gradients_received[epoch_num][node_num] = ml_sst.round[node_num];
         num_gradients_received[epoch_num][0] += num_gradients_received[epoch_num][node_num];
-	this->num_lost_gradients[epoch_num][node_num] = (double)num_lost_gradients[node_num];
+	this->num_lost_gradients[epoch_num][node_num] = (double)num_lost_gradients_per_node[node_num];
 	this->num_lost_gradients[epoch_num][0] += this->num_lost_gradients[epoch_num][node_num];
     }
 }
@@ -211,6 +212,15 @@ void utils::ml_stat_t::fout_gradients_per_epoch() {
   }
 }
 
+void utils::ml_stat_t::fout_op_time_log() {
+  std::ofstream server_log_file("server.log", std::ofstream::trunc);
+  while (!op_time_log_q.empty()) {
+    std::pair<std::pair<uint64_t, uint64_t>, uint32_t> item = op_time_log_q.front();
+    op_time_log_q.pop();
+    server_log_file <<  item.first.first << " " << item.first.second << " " << item.second << std::endl;
+  }
+}
+
 utils::ml_stats_t::ml_stats_t(uint32_t num_nodes, uint32_t num_epochs)
   : ml_stat_vec(), mean(num_nodes, num_epochs)
     , std(num_nodes, num_epochs), err(num_nodes, num_epochs) {
@@ -321,53 +331,60 @@ void utils::ml_stats_t::compute_err() {
 }
   
 void utils::ml_stats_t::grid_search_helper(std::string target_dir) {
-    assert (ml_stat_vec.size() > 0);
-    uint num_epochs = ml_stat_vec[0].num_epochs;
-    std::ifstream prev_loss_opt_file;
-    uint num_nodes = ml_stat_vec[0].num_nodes;
-    uint batch_size = ml_stat_vec[0].batch_size;
-    double alpha = ml_stat_vec[0].alpha;
-    double decay = ml_stat_vec[0].decay;
-    std::string worker_dir = std::to_string(num_nodes - 1) + "workers";
-
+  assert (ml_stat_vec.size() > 0);
+  uint num_epochs = ml_stat_vec[0].num_epochs;
+  std::ifstream prev_loss_opt_file;
+  uint num_nodes = ml_stat_vec[0].num_nodes;
+  uint batch_size = ml_stat_vec[0].batch_size;
+  double alpha = ml_stat_vec[0].alpha;
+  double decay = ml_stat_vec[0].decay;
+  std::string worker_dir = std::to_string(num_nodes - 1) + "workers";
+  try {
     prev_loss_opt_file.open(target_dir + "/" + worker_dir + "/sgd_loss_opt.txt");
-    
-    std::string prev_loss_opt_str;
-    prev_loss_opt_file >> prev_loss_opt_str;
-    const double prev_loss_opt = std::stod(prev_loss_opt_str);
-    prev_loss_opt_file.close();
-    double cur_loss = mean.loss_gap[num_epochs] + get_loss_opt(target_dir);
-    uint32_t aggregate_batch_size = batch_size * num_nodes;
-    if (cur_loss < prev_loss_opt) {
-      std::cout << "cur_loss " << cur_loss
-		<< " < prev_loss_opt " << prev_loss_opt << std::endl;
-      std::cout << "Found better alpha " << alpha << " decay " << decay
-		<< " and aggregate_batch_size " << aggregate_batch_size << std::endl;
+  } catch (std::ifstream::failure e) {
+    std::cerr << "File open error: " + target_dir + "/" + worker_dir + "/sgd_loss_opt.txt" << std::endl;
+    exit(1);
+  }
+  std::string prev_loss_opt_str;
+  prev_loss_opt_file >> prev_loss_opt_str;
+  const double prev_loss_opt = std::stod(prev_loss_opt_str);
+  prev_loss_opt_file.close();
+  double cur_loss = mean.loss_gap[num_epochs] + get_loss_opt(target_dir);
+  uint32_t aggregate_batch_size = batch_size * num_nodes;
+  if (cur_loss < prev_loss_opt) {
+    std::cout << "cur_loss " << cur_loss
+	      << " < prev_loss_opt " << prev_loss_opt << std::endl;
+    std::cout << "Found better alpha " << alpha << " decay " << decay
+	      << " and aggregate_batch_size " << aggregate_batch_size << std::endl;
       
-      std::ofstream sgd_alpha_opt_file(target_dir + "/" + worker_dir + "/sgd_alpha_opt.txt");
-      sgd_alpha_opt_file << alpha;
-      std::ofstream sgd_decay_opt_file(target_dir + "/" + worker_dir + "/sgd_decay_opt.txt");
-      sgd_decay_opt_file << decay;
-      std::ofstream sgd_batch_opt_file(target_dir + "/" + worker_dir + "/sgd_batch_opt.txt");
-      sgd_batch_opt_file << aggregate_batch_size;
-      std::ofstream sgd_epoch_opt_file(target_dir + "/" + worker_dir + "/sgd_epoch_opt.txt");
-      sgd_epoch_opt_file << num_epochs;
-      std::ofstream sgd_loss_opt_file(target_dir + "/" + worker_dir + "/sgd_loss_opt.txt");
-      sgd_loss_opt_file << cur_loss;
-    } else {
-      std::cout << "cur_loss " << cur_loss
-		<< " > prev_loss_opt " << prev_loss_opt << std::endl;
-      std::cout << "This alpha " << alpha << " decay " << decay
-		<< " and aggregate_batch_size " << aggregate_batch_size
-    		<< " is NOT better than the current ones." << std::endl;
-    }
+    std::ofstream sgd_alpha_opt_file(target_dir + "/" + worker_dir + "/sgd_alpha_opt.txt");
+    sgd_alpha_opt_file << alpha;
+    std::ofstream sgd_decay_opt_file(target_dir + "/" + worker_dir + "/sgd_decay_opt.txt");
+    sgd_decay_opt_file << decay;
+    std::ofstream sgd_batch_opt_file(target_dir + "/" + worker_dir + "/sgd_batch_opt.txt");
+    sgd_batch_opt_file << aggregate_batch_size;
+    std::ofstream sgd_epoch_opt_file(target_dir + "/" + worker_dir + "/sgd_epoch_opt.txt");
+    sgd_epoch_opt_file << num_epochs;
+    std::ofstream sgd_loss_opt_file(target_dir + "/" + worker_dir + "/sgd_loss_opt.txt");
+    sgd_loss_opt_file << cur_loss;
+  } else {
+    std::cout << "cur_loss " << cur_loss
+	      << " > prev_loss_opt " << prev_loss_opt << std::endl;
+    std::cout << "This alpha " << alpha << " decay " << decay
+	      << " and aggregate_batch_size " << aggregate_batch_size
+	      << " is NOT better than the current ones." << std::endl;
+  }
 }
 
 double utils::ml_stats_t::get_loss_opt(std::string target_dir) {
   std::ifstream loss_opt_file;
   uint num_nodes = ml_stat_vec[0].num_nodes;
-  std::string worker_dir = std::to_string(num_nodes - 1) + "workers";
-  loss_opt_file.open(target_dir + "/" + worker_dir + "/svrg_loss_opt.txt");
+  try {
+    loss_opt_file.open(target_dir + "/svrg_loss_opt.txt");
+  } catch (std::ifstream::failure e) {
+    std::cerr << "File open error: " + target_dir + "/svrg_loss_opt.txt" << std::endl;
+    exit(1);
+  }
   std::string loss_opt_str;
   loss_opt_file >> loss_opt_str;
   double loss_opt = std::stod(loss_opt_str);
@@ -441,18 +458,18 @@ void utils::ml_stats_t::fout_log_err_per_epoch() {
 
   for (uint32_t epoch_num = 0; epoch_num < num_epochs + 1; ++epoch_num) {
     err_file << num_trials << " "
-  	   << num_nodes - 1 << " "
-  	   << epoch_num << " "
-  	   << alpha << " "
-  	   << decay << " "
-  	   << batch_size << " "
-  	   << err.cumulative_time[epoch_num] << " "
-  	   << 100 * err.training_error[epoch_num] << " "
-  	   << 100 * err.test_error[epoch_num] << " "
-  	   << err.loss_gap[epoch_num] << " "
-  	   << err.dist_to_opt[epoch_num] << " "
-  	   << err.grad_norm[epoch_num] << " "
-  	   << std::endl;
+	     << num_nodes - 1 << " "
+	     << epoch_num << " "
+	     << alpha << " "
+	     << decay << " "
+	     << batch_size << " "
+	     << err.cumulative_time[epoch_num] << " "
+	     << 100 * err.training_error[epoch_num] << " "
+	     << 100 * err.test_error[epoch_num] << " "
+	     << err.loss_gap[epoch_num] << " "
+	     << err.dist_to_opt[epoch_num] << " "
+	     << err.grad_norm[epoch_num] << " "
+	     << std::endl;
   }
 }
 
@@ -588,20 +605,20 @@ void utils::ml_stats_t::fout_gradients_err_per_epoch() {
 
   std::ofstream gradients_err_file("RDMAwild.gradients.err", std::ofstream::app);
   gradients_err_file << "num_trials "
-  	 << "num_workers "
-  	 << "alpha "
-  	 << "decay "
-  	 << "batch_size "
-  	 << "num_epochs ";
+		     << "num_workers "
+		     << "alpha "
+		     << "decay "
+		     << "batch_size "
+		     << "num_epochs ";
   for (uint node_num = 0; node_num < num_nodes; ++node_num) {
     if (node_num == 0) {
-  	gradients_err_file << "num_lost_gradients_sum ";
+      gradients_err_file << "num_lost_gradients_sum ";
     }
     gradients_err_file << "node" << node_num << " ";
   }
   for (uint node_num = 0; node_num < num_nodes; ++node_num) {
     if (node_num == 0) {
-  	gradients_err_file << "num_gradients_received_sum ";
+      gradients_err_file << "num_gradients_received_sum ";
     }
     gradients_err_file << "node" << node_num << " ";
   }
@@ -609,16 +626,16 @@ void utils::ml_stats_t::fout_gradients_err_per_epoch() {
     
   for (uint32_t epoch_num = 0; epoch_num < num_epochs + 1; ++epoch_num) {
     gradients_err_file << num_trials << " "
-  	   << num_nodes - 1 << " "
-  	   << alpha << " "
-  	   << decay << " "
-  	   << batch_size << " "
-  	   << epoch_num << " ";
+		       << num_nodes - 1 << " "
+		       << alpha << " "
+		       << decay << " "
+		       << batch_size << " "
+		       << epoch_num << " ";
     for (uint node_num = 0; node_num < num_nodes; ++node_num) {
-  	gradients_err_file << err.num_lost_gradients[epoch_num][node_num] << " ";
+      gradients_err_file << err.num_lost_gradients[epoch_num][node_num] << " ";
     }
     for (uint node_num = 0; node_num < num_nodes; ++node_num) {
-  	gradients_err_file << err.num_gradients_received[epoch_num][node_num] << " ";
+      gradients_err_file << err.num_gradients_received[epoch_num][node_num] << " ";
     }
     gradients_err_file << std::endl;
   }

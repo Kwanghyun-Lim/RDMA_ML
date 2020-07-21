@@ -6,7 +6,7 @@ target_include_directories(worker
   ${logistic_regression_SOURCE_DIR})
 target_link_libraries(worker coordinator utils)
 
-add_executable(server server.cpp)
+add_executable(server server.cpp server.hpp)
 target_include_directories(server
   PUBLIC
   ${logistic_regression_SOURCE_DIR})
