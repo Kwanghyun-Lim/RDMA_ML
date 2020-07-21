@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.0)
 
-add_executable(worker worker.cpp)
+add_executable(worker worker.cpp worker.hpp)
 target_include_directories(worker
   PUBLIC
   ${logistic_regression_SOURCE_DIR})

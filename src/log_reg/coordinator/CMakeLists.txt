@@ -2,7 +2,6 @@ cmake_minimum_required(VERSION 3.0)
 
 add_library(coordinator
   SHARED
-  async_worker.hpp async_worker.cpp
   tcp.hpp tcp.cpp
   sst.h sst_impl.h
   verbs.h verbs.cpp

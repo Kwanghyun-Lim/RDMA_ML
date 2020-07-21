@@ -4,11 +4,11 @@
 #include <map>
 #include <memory>
 
-#include "ml_sst.hpp"
+#include "coordinator/ml_sst.hpp"
+#include "coordinator/tcp.hpp"
 #include "log_reg.hpp"
-#include "tcp.hpp"
 
-namespace coordinator {
+namespace worker {
 class async_worker {
 public:
     async_worker(log_reg::multinomial_log_reg& m_log_reg,
