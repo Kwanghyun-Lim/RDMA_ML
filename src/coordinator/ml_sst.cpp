@@ -2,10 +2,10 @@
 #include "utils/utils.hpp"
 
 sst::MLSST::MLSST(const std::vector<uint32_t>& members,
-                  const uint32_t my_id, const size_t num_params)
+                  const uint32_t my_id, const size_t num_params, const uint32_t num_nodes)
         : sst::SST<MLSST>(this, SSTParams{members, my_id}),
           model_or_gradient(num_params),
-	  last_round(16) {
+	  last_round(num_nodes) {
     SSTInit(model_or_gradient, round, last_round);
     initialize();
 }

@@ -19,28 +19,21 @@
 #include "utils/ml_stat.hpp"
 
 int main(int argc, char* argv[]) {
-    if(argc < 11) {
+    if(argc < 9) {
         std::cerr << "Usage: " << argv[0]
-                  << " <data_directory> <syn/mnist/rff> <SVRG 0/1> <alpha> <decay> <aggregate_batch_size> <num_epochs> <num_nodes> <num_trials> <broadcast_completion_period>"
+                  << " <data_directory> <syn/mnist/rff> <alpha> <decay> <aggregate_batch_size> <num_epochs> <num_nodes> <num_trials>"
                   << std::endl;
         return 1;
     }
     std::string data_directory(argv[1]);
     std::string data(argv[2]);
-    bool svrg = bool(atoi(argv[3]));
-
     const double gamma = 0.0001;
-    const double alpha = std::stod(argv[4]);
-    double decay = std::stod(argv[5]);
-    if(svrg) {
-        decay = 1.0;
-    }
-    uint32_t aggregate_batch_size = std::stod(argv[6]);
-    const uint32_t num_epochs = atoi(argv[7]);
-    const uint32_t num_nodes = atoi(argv[8]);
-    const uint32_t num_inner_epochs = 2;
-    const uint32_t num_trials = atoi(argv[9]);
-    const uint32_t broadcast_completion_period = atoi(argv[10]);
+    const double alpha = std::stod(argv[3]);
+    double decay = std::stod(argv[4]);
+    uint32_t aggregate_batch_size = std::stod(argv[5]);
+    const uint32_t num_epochs = atoi(argv[6]);
+    const uint32_t num_nodes = atoi(argv[7]);
+    const uint32_t num_trials = atoi(argv[8]);
 
     std::map<uint32_t, std::string> ip_addrs_static;
     ip_addrs_static[0] = "192.168.99.16";
@@ -78,12 +71,11 @@ int main(int argc, char* argv[]) {
                     return (utils::dataset)numpy::numpy_dataset(
                             data_directory + "/" + data, (num_nodes - 1), 0);
                 },
-                alpha, gamma, decay, batch_size,
-                svrg, num_inner_epochs);
+                alpha, gamma, decay, batch_size);
 
         const size_t num_batches = m_log_reg.get_num_batches();
 
-        sst::MLSST ml_sst(members, 0, m_log_reg.get_model_size());
+        sst::MLSST ml_sst(members, 0, m_log_reg.get_model_size(), num_nodes);
         m_log_reg.set_model_mem((double*)std::addressof(ml_sst.model_or_gradient[0][0]));
         utils::ml_stat_t ml_stat(trial_num, num_nodes, num_epochs,
 				 alpha, decay, batch_size,

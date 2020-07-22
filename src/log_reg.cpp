@@ -10,14 +10,11 @@
 
 log_reg::multinomial_log_reg::multinomial_log_reg(
         const utils::reader_t& dataset_loader,
-        const double alpha, const double gamma, double decay, const size_t batch_size,
-	const bool svrg, const uint32_t num_inner_epochs)
+        const double alpha, const double gamma, double decay, const size_t batch_size)
         : dataset(dataset_loader()),
           model_size(dataset.training_labels.num_classes
                      * dataset.training_images.num_pixels),
 	  gradients(),
-	  svrg(svrg),
-	  num_inner_epochs(num_inner_epochs),
 	  full_gradient(new double[model_size]),
 	  full_predicted_labels(std::make_unique<double[]>(
 		           dataset.training_labels.num_classes * dataset.training_images.num_total_images)),
@@ -29,10 +26,6 @@ log_reg::multinomial_log_reg::multinomial_log_reg(
 	  num_model_updates(0),
           predicted_labels(std::make_unique<double[]>(
 		           dataset.training_labels.num_classes * batch_size)) {
-  if (svrg) {
-    anchor_model = new double[model_size];
-    sample_gradient = new double[model_size];
-  }
 }
 
 void log_reg::multinomial_log_reg::train(const size_t num_epochs) {
@@ -43,27 +36,6 @@ void log_reg::multinomial_log_reg::train(const size_t num_epochs) {
 	    update_model();
         }
     }
-}
-
-void log_reg::multinomial_log_reg::train_SVRG(const size_t num_epochs) {
-  if (num_epochs % 3 == 1) {
-    std::cout << "WARN: num_epochs should not be num_epochs % 3 == 1" << std::endl;
-  }
-  const size_t num_batches = get_num_batches();
-  size_t left_epochs;
-  for (size_t epoch_num = 0; epoch_num < std::ceil((double)num_epochs / (1 + num_inner_epochs)); ++epoch_num) {
-    copy_model(model, anchor_model, model_size);
-    compute_full_gradient(anchor_model);
-    left_epochs = num_epochs - (1 + ((num_inner_epochs + 1) * epoch_num));
-    if (left_epochs < num_inner_epochs) {
-      num_inner_epochs = left_epochs;
-    }
-    for (size_t batch_num = 0; batch_num < num_batches * num_inner_epochs; ++batch_num) {
-      compute_gradient(batch_num % num_batches, model);
-      update_gradient(batch_num % num_batches);
-      update_model();
-    }
-  }
 }
 
 void log_reg::multinomial_log_reg::copy_model(double* src, double* dst, size_t len) {
@@ -99,12 +71,7 @@ void log_reg::multinomial_log_reg::compute_gradient(size_t batch_num, double* gi
     const utils::labels_t& labels = dataset.training_labels;
     batch_num += dataset.part_num * get_num_batches(); // convert from local batch_num to global batch_num
     
-    double* gradient_ptr = NULL;
-    if (given_model == anchor_model) {
-      gradient_ptr = sample_gradient;
-    } else {
-      gradient_ptr = gradients[0];
-    }
+    double* gradient_ptr = gradients[0];
    
     utils::submatrix_multiply(CblasNoTrans, CblasNoTrans,
 			      given_model, images.arr.get(), predicted_labels.get(),
@@ -124,12 +91,6 @@ void log_reg::multinomial_log_reg::compute_gradient(size_t batch_num, double* gi
 			      batch_size, images.num_total_images,
 			      1/(double)batch_size, 0);
     cblas_daxpy(model_size, gamma, given_model, 1, gradient_ptr, 1);
-}
-
-void log_reg::multinomial_log_reg::update_gradient(const size_t batch_num) {
-  compute_gradient(batch_num, anchor_model); // compute sample_gradient using anchor_model
-  cblas_daxpy(model_size, -1, sample_gradient, 1, gradients[0], 1);
-  cblas_daxpy(model_size, 1, full_gradient, 1, gradients[0], 1);
 }
 
 void log_reg::multinomial_log_reg::compute_full_gradient(double* given_model) {
@@ -208,16 +169,8 @@ double* log_reg::multinomial_log_reg::get_gradient(uint ml_sst_row) const {
   return gradients[ml_sst_row-1];
 }
 
-double* log_reg::multinomial_log_reg::get_anchor_model() const {
-  return anchor_model;
-}
-
 double* log_reg::multinomial_log_reg::get_full_gradient() const {
   return full_gradient;
-}
-
-double* log_reg::multinomial_log_reg::get_sample_gradient() const {
-  return sample_gradient;
 }
 
 double log_reg::multinomial_log_reg::compute_error(const utils::images_t& images, const utils::labels_t& labels) {

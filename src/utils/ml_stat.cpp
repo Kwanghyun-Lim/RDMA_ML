@@ -340,9 +340,7 @@ void utils::ml_stats_t::grid_search_helper(std::string target_dir) {
   double decay = ml_stat_vec[0].decay;
   std::string worker_dir = std::to_string(num_nodes - 1) + "workers";
   try {
-    std::cout << "[grid_search_helper] start" << std::endl;
     prev_loss_opt_file.open(target_dir + "/" + worker_dir + "/sgd_loss_opt.txt");
-    std::cout << "[grid_search_helper] end" << std::endl;
   } catch (std::ifstream::failure e) {
     std::cerr << "File open error: " + target_dir + "/" + worker_dir + "/sgd_loss_opt.txt" << std::endl;
     exit(1);
@@ -382,9 +380,7 @@ double utils::ml_stats_t::get_loss_opt(std::string target_dir) {
   std::ifstream loss_opt_file;
   uint num_nodes = ml_stat_vec[0].num_nodes;
   try {
-    std::cout << "[get_loss_opt] start" << std::endl;
     loss_opt_file.open(target_dir + "/svrg_loss_opt.txt");
-    std::cout << "[get_loss_opt] end" << std::endl;
   } catch (std::ifstream::failure e) {
     std::cerr << "File open error: " + target_dir + "/svrg_loss_opt.txt" << std::endl;
     exit(1);

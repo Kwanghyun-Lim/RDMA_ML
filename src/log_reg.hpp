@@ -10,12 +10,10 @@ namespace log_reg {
 class multinomial_log_reg {
 public:
     multinomial_log_reg(const utils::reader_t& dataset_loader,
-			const double alpha, const double gamma, double decay, const size_t batch_size,
-			const bool svrg, const uint32_t num_inner_epochs);
+			const double alpha, const double gamma, double decay, const size_t batch_size);
 
     void train(const size_t num_epochs);
-    void train_SVRG(const size_t num_epochs);
-
+ 
     double training_error();
     double training_loss();
     double get_loss_opt() const;
@@ -56,14 +54,8 @@ private:
     const size_t model_size;
     double* model;
     std::vector<double*> gradients;
-  
-    // For SVRG
-    const bool svrg;
-    uint32_t num_inner_epochs;
-    double* anchor_model;
-    double* full_gradient; 
-    double* sample_gradient; 
-    std::unique_ptr<double[]> full_predicted_labels;
+    double* full_gradient; // for gradient norm statistics
+    std::unique_ptr<double[]> full_predicted_labels; // for full_gradient
   
     double alpha;
     const double gamma;
