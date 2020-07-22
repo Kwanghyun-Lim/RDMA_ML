@@ -60,6 +60,16 @@ void utils::ml_timer_t::set_push_end() {
   push_total += push_end - push_start;
 }
 
+void utils::ml_timer_t::set_train_start() {
+  clock_gettime(CLOCK_REALTIME, &train_start_time);
+}
+
+void utils::ml_timer_t::set_train_end() {
+  clock_gettime(CLOCK_REALTIME, &train_end_time);
+  train_time_taken = (double)(train_end_time.tv_sec - train_start_time.tv_sec)
+    + (train_end_time.tv_nsec - train_start_time.tv_nsec) / 1e9;
+}
+
 utils::ml_stat_t::ml_stat_t(uint32_t num_nodes, uint32_t num_epochs) :
   trial_num(0),
   num_nodes(0),
@@ -81,7 +91,8 @@ utils::ml_stat_t::ml_stat_t(uint32_t num_nodes, uint32_t num_epochs) :
   dist_to_opt(num_epochs + 1, 0),
   grad_norm(num_epochs + 1, 0),
   num_lost_gradients_per_node(num_nodes, 0),
-  timer()
+  timer(),
+  num_broadcasts(0)
 {
 }
 
@@ -110,7 +121,8 @@ utils::ml_stat_t::ml_stat_t(uint32_t trial_num, uint32_t num_nodes,
           dist_to_opt(num_epochs + 1, 0),
           grad_norm(num_epochs + 1, 0),
 	  num_lost_gradients_per_node(num_nodes, 0),
-	  timer()
+	  timer(),
+	  num_broadcasts(0)
 {
     for(uint epoch_num = 0; epoch_num < num_epochs + 1; ++epoch_num) {
         intermediate_models[epoch_num] = new double[model_size];
@@ -119,29 +131,29 @@ utils::ml_stat_t::ml_stat_t(uint32_t trial_num, uint32_t num_nodes,
         }
     }
 
-    initialize_epoch_parameters(0, m_log_reg.get_model(),
-				ml_sst, 0, 0);
+    set_epoch_parameters(0, m_log_reg.get_model(), ml_sst);
 }
 
-void utils::ml_stat_t::initialize_epoch_parameters(
-        uint32_t epoch_num, double* model,
-        const sst::MLSST& ml_sst, uint64_t num_broadcasts,
-	double time_taken) {
+void utils::ml_stat_t::set_epoch_parameters(
+		  uint32_t epoch_num, double* model, const sst::MLSST& ml_sst) {
     for(size_t i = 0; i < model_size; ++i) {
         intermediate_models[epoch_num][i] = model[i];
     }
     if (epoch_num == 0) {
-      cumulative_time[epoch_num] = time_taken;
+      cumulative_time[epoch_num] = 0.0;
     } else {
-      cumulative_time[epoch_num] = cumulative_time[epoch_num-1] + time_taken;
+      cumulative_time[epoch_num] = cumulative_time[epoch_num-1] + timer.train_time_taken;
     }
     cumulative_num_broadcasts[epoch_num] = num_broadcasts;
     num_model_updates[epoch_num] = ml_sst.round[0];
     for(uint node_num = 1; node_num < num_nodes; ++node_num) {
         num_gradients_received[epoch_num][node_num] = ml_sst.round[node_num];
-        num_gradients_received[epoch_num][0] += num_gradients_received[epoch_num][node_num];
-	this->num_lost_gradients[epoch_num][node_num] = (double)num_lost_gradients_per_node[node_num];
-	this->num_lost_gradients[epoch_num][0] += this->num_lost_gradients[epoch_num][node_num];
+        num_gradients_received[epoch_num][0] +=
+	  num_gradients_received[epoch_num][node_num];
+	this->num_lost_gradients[epoch_num][node_num] =
+	  (double)num_lost_gradients_per_node[node_num];
+	this->num_lost_gradients[epoch_num][0] +=
+	  this->num_lost_gradients[epoch_num][node_num];
     }
 }
 

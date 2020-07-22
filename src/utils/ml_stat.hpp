@@ -2,6 +2,7 @@
 
 #include "coordinator/ml_sst.hpp"
 #include "log_reg.hpp"
+#include <atomic>
 #include <chrono>
 #include <queue>
 
@@ -16,6 +17,8 @@ public:
   void set_compute_end();
   void set_push_start();
   void set_push_end();
+  void set_train_start();
+  void set_train_end();
 
   struct timespec start_time, end_time;
   uint64_t relay_start, relay_end;
@@ -23,6 +26,8 @@ public:
   uint64_t push_start, push_end;
   uint64_t wait_start, wait_end;
   uint64_t relay_total, compute_total, push_total, wait_total;
+  struct timespec train_start_time, train_end_time;
+  double train_time_taken;
   std::queue<std::pair<std::pair<uint64_t, uint64_t>, uint32_t>> op_time_log_q;
 };
   
@@ -36,10 +41,7 @@ public:
               const sst::MLSST& ml_sst,
               log_reg::multinomial_log_reg& m_log_reg);
 
-    void initialize_epoch_parameters(
-            uint32_t epoch_num, double* model,
-            const sst::MLSST& ml_sst, uint64_t num_broadcasts,
-	    double time_taken);
+    void set_epoch_parameters(uint32_t epoch_num, double* model, const sst::MLSST& ml_sst);
     void collect_results(uint32_t epoch_num, log_reg::multinomial_log_reg& m_log_reg);
     void print_results();
     void fout_log_per_epoch();
@@ -72,6 +74,7 @@ public:
     std::vector<double> grad_norm;
 
     ml_timer_t timer;
+    uint64_t num_broadcasts;
 };
 
 class ml_stats_t {

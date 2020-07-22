@@ -120,7 +120,7 @@ void worker::async_worker::train(const size_t num_epochs) {
       ml_stat.timer.set_push_end();
     }
     ml_sst.sync_with_members(); // barrier pair with server #2
-    // Between those two, server stores intermidiate models for statistics
+    // Between those two, server stores intermidiate models and parameters for statistics
     ml_sst.sync_with_members(); // barrier pair with server #3
   }
   ml_sst.sync_with_members(); // barrier pair with server #4
