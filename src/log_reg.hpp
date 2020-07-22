@@ -46,6 +46,7 @@ public:
     size_t get_num_total_images() const;
 
     void save_npy_model() const;
+  
 private:
     double compute_error(const utils::images_t& images, const utils::labels_t& labels);
     double compute_loss(const utils::images_t& images, const utils::labels_t& labels);

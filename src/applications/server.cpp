@@ -138,10 +138,6 @@ void server::async_server::train(const size_t num_epochs) {
       pthread_setname_np(pthread_self(), ("update_broadcast"));
       const uint32_t num_nodes = ml_sst.get_num_rows();
       const size_t num_batches = m_log_reg.get_num_batches();
-      uint64_t t1 = 0;
-      uint64_t t2 = 0;
-      uint64_t t3 = 0;
-      uint64_t t4 = 0;
       std::vector<uint32_t> target_nodes;
       while(!training) {
 	for (uint row = 1; row < num_nodes; ++row) {
