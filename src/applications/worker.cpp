@@ -20,6 +20,8 @@ int main(int argc, char* argv[]) {
                   << std::endl;
         return 1;
     }
+    
+    // Initialize parameters
     std::string data_directory(argv[1]);
     std::string data(argv[2]);
     const double gamma = 0.0001;
@@ -30,8 +32,10 @@ int main(int argc, char* argv[]) {
     const uint32_t node_rank = atoi(argv[7]);
     const uint32_t num_nodes = atoi(argv[8]);
     const uint32_t num_trials = atoi(argv[9]);
+    const size_t batch_size = aggregate_batch_size / (num_nodes - 1);
     openblas_set_num_threads(1);
-    
+
+    // Network setup
     std::map<uint32_t, std::string> ip_addrs_static;
     ip_addrs_static[0] = "192.168.99.16";
     ip_addrs_static[1] = "192.168.99.17";
@@ -49,110 +53,75 @@ int main(int argc, char* argv[]) {
     ip_addrs_static[13] = "192.168.99.26";
     ip_addrs_static[14] = "192.168.99.106";
     ip_addrs_static[15] = "192.168.99.28";
-
     std::map<uint32_t, std::string> ip_addrs;
     ip_addrs[0] = ip_addrs_static.at(0);
     ip_addrs[node_rank] = ip_addrs_static.at(node_rank);
     sst::verbs_initialize(ip_addrs, node_rank);
     
-    const size_t batch_size = aggregate_batch_size / (num_nodes - 1);
-
+    // multiple trials for statistics
     for(uint32_t trial_num = 0; trial_num < num_trials; ++trial_num) {
       std::cout << "trial_num " << trial_num << std::endl;
-      log_reg::multinomial_log_reg m_log_reg(
-					     [&]() {
-					       return (utils::dataset)numpy::numpy_dataset(
-											   data_directory + "/" + data, (num_nodes - 1), node_rank - 1);
+      // Initialize m_log_reg, ml_sst, ml_stat, and worker for training
+      log_reg::multinomial_log_reg m_log_reg([&]() {
+	                                     return (utils::dataset)numpy::numpy_dataset(
+					     data_directory + "/" + data,
+					     (num_nodes - 1), node_rank - 1);
 					     },
 					     alpha, gamma, decay, batch_size);
-
-      sst::MLSST ml_sst(std::vector<uint32_t>{0, node_rank},
-			node_rank, m_log_reg.get_model_size(), num_nodes);
-
+      sst::MLSST ml_sst(std::vector<uint32_t>{0, node_rank}, node_rank,
+			m_log_reg.get_model_size(), num_nodes);
       m_log_reg.set_model_mem((double*)std::addressof(ml_sst.model_or_gradient[0][0]));
-      m_log_reg.push_back_to_grad_vec((double*)std::addressof(ml_sst.model_or_gradient[1][0]));
-      
-      worker::async_worker worker(m_log_reg, ml_sst, node_rank);
+      m_log_reg.push_back_to_grad_vec((double*)std::addressof(
+				       ml_sst.model_or_gradient[1][0]));
+      utils::ml_stat_t ml_stat(trial_num, num_nodes, num_epochs,
+			       alpha, decay, batch_size, node_rank,
+			       ml_sst, m_log_reg);
+      worker::async_worker worker(m_log_reg, ml_sst, ml_stat, node_rank);
+
+      // Train
       worker.train(num_epochs);
-      
+      std::cout << "trial_num " << trial_num << " done." << std::endl;
+      std::cout << "Collecting results..." << std::endl;
+      ml_stat.fout_op_time_log(false); // is_server == false
+      std::cout << "Collecting results done." << std::endl;
+      ml_sst.sync_with_members(); // barrier pair with server #5
       if (trial_num == num_trials - 1) {
-	ml_sst.sync_with_members();
+	std::cout << "All trainings and loggings done." << std::endl;
+	ml_sst.sync_with_members(); // barrier pair with server #6
       }
     }
 }
 
 worker::async_worker::async_worker(log_reg::multinomial_log_reg& m_log_reg,
-					sst::MLSST& ml_sst, const uint32_t node_rank)
-  : m_log_reg(m_log_reg), ml_sst(ml_sst), node_rank(node_rank) {
+				   sst::MLSST& ml_sst,
+				   utils::ml_stat_t& ml_stat,
+				   const uint32_t node_rank)
+  : m_log_reg(m_log_reg), ml_sst(ml_sst), ml_stat(ml_stat), node_rank(node_rank) {
 }
 
 void worker::async_worker::train(const size_t num_epochs) {
-  ml_sst.sync_with_members();
-  std::queue<std::pair<std::pair<uint64_t, uint64_t>, uint32_t>> q;
-  struct timespec start_time, end_time;
-  uint64_t relay_start, relay_end, grad_start, grad_end, push_start, push_end, wait_start, wait_end;
-  uint64_t relay_total=0, grad_total=0, push_total=0, wait_total=0;
-  clock_gettime(CLOCK_REALTIME, &start_time);
-  
+  ml_sst.sync_with_members(); // barrier pair with server #1
+  ml_stat.timer.set_start_time();
   const size_t num_batches = m_log_reg.get_num_batches();
   for(size_t epoch_num = 0; epoch_num < num_epochs; ++epoch_num) {
     for(size_t batch_num = 0; batch_num < num_batches; ++batch_num) {
-      clock_gettime(CLOCK_REALTIME, &end_time);
-      wait_start = (end_time.tv_sec - start_time.tv_sec) * 1e9
-      	    + (end_time.tv_nsec - start_time.tv_nsec);
-
+      ml_stat.timer.set_wait_start();
       while (ml_sst.last_round[0][node_rank] != ml_sst.round[1]) {
       }
-      
-      clock_gettime(CLOCK_REALTIME, &end_time);
-      wait_end = (end_time.tv_sec - start_time.tv_sec) * 1e9
-      	    + (end_time.tv_nsec - start_time.tv_nsec);
-      q.push({{wait_start, wait_end}, 0});
-      wait_total += wait_end - wait_start;
+      ml_stat.timer.set_wait_end();
 
-      
-      clock_gettime(CLOCK_REALTIME, &end_time);
-      grad_start = (end_time.tv_sec - start_time.tv_sec) * 1e9
-	+ (end_time.tv_nsec - start_time.tv_nsec);
-
+      ml_stat.timer.set_compute_start();
       m_log_reg.compute_gradient(batch_num, m_log_reg.get_model());
+      ml_stat.timer.set_compute_end();
 
-      clock_gettime(CLOCK_REALTIME, &end_time);
-      grad_end = (end_time.tv_sec - start_time.tv_sec) * 1e9
-	+ (end_time.tv_nsec - start_time.tv_nsec);
-      q.push({{grad_start, grad_end}, 2});
-      grad_total += grad_end - grad_start;
-
-      clock_gettime(CLOCK_REALTIME, &end_time);
-      push_start = (end_time.tv_sec - start_time.tv_sec) * 1e9
-	+ (end_time.tv_nsec - start_time.tv_nsec);
-      
       ml_sst.round[1]++;
+      ml_stat.timer.set_push_start();
       ml_sst.put_with_completion();
-
-      clock_gettime(CLOCK_REALTIME, &end_time);
-      push_end = (end_time.tv_sec - start_time.tv_sec) * 1e9
-	    + (end_time.tv_nsec - start_time.tv_nsec);
-      
-      q.push({{push_start, push_end}, 3});
-      push_total += push_end - push_start;
+      ml_stat.timer.set_push_end();
     }
-
-    ml_sst.sync_with_members();
-    ml_sst.sync_with_members();
+    ml_sst.sync_with_members(); // barrier pair with server #2
+    // Between those two, server stores intermidiate models for statistics
+    ml_sst.sync_with_members(); // barrier pair with server #3
   }
-  std::ofstream worker_log_file("worker" + std::to_string(node_rank) + ".log", std::ofstream::trunc);
-  while (!q.empty()) {
-    std::pair<std::pair<uint64_t, uint64_t>, uint32_t> item = q.front();
-    q.pop();
-    worker_log_file <<  item.first.first << " " << item.first.second << " " << item.second << std::endl;
-  }
-  std::ofstream worker_stat_file("worker" + std::to_string(node_rank) + ".stat", std::ofstream::trunc);
-  uint64_t total = relay_total + grad_total + push_total + wait_total;
-  worker_stat_file <<  "relay" << " " << "grad" << " " << "push" <<  " " <<  "wait" << " " << "total" << std::endl;
-  worker_stat_file <<  relay_total << " " << grad_total << " " << push_total << " " << wait_total << " " << total << std::endl;
-  worker_stat_file <<  float(relay_total)/total << " " << float(grad_total)/total << " "
-		   << float(push_total)/total << " " << float(wait_total)/total << " " << total << std::endl;
-
-  ml_sst.sync_with_members();
+  ml_sst.sync_with_members(); // barrier pair with server #4
 }

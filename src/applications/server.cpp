@@ -25,6 +25,8 @@ int main(int argc, char* argv[]) {
                   << std::endl;
         return 1;
     }
+
+    // Initialize parameters
     std::string data_directory(argv[1]);
     std::string data(argv[2]);
     const double gamma = 0.0001;
@@ -32,9 +34,12 @@ int main(int argc, char* argv[]) {
     double decay = std::stod(argv[4]);
     uint32_t aggregate_batch_size = std::stod(argv[5]);
     const uint32_t num_epochs = atoi(argv[6]);
+    const uint32_t node_rank = 0;
     const uint32_t num_nodes = atoi(argv[7]);
     const uint32_t num_trials = atoi(argv[8]);
+    const size_t batch_size = aggregate_batch_size / (num_nodes - 1);
 
+    // Network setup
     std::map<uint32_t, std::string> ip_addrs_static;
     ip_addrs_static[0] = "192.168.99.16";
     ip_addrs_static[1] = "192.168.99.17";
@@ -52,7 +57,6 @@ int main(int argc, char* argv[]) {
     ip_addrs_static[13] = "192.168.99.26";
     ip_addrs_static[14] = "192.168.99.106";
     ip_addrs_static[15] = "192.168.99.28";
-    
     std::map<uint32_t, std::string> ip_addrs;
     for(uint32_t i = 0; i < num_nodes; ++i) {
         ip_addrs[i] = ip_addrs_static.at(i);
@@ -61,60 +65,59 @@ int main(int argc, char* argv[]) {
     std::vector<uint32_t> members(num_nodes);
     std::iota(members.begin(), members.end(), 0);
 
-    const size_t batch_size = aggregate_batch_size / (num_nodes - 1);
-
+    // multiple trials for statistics
     utils::ml_stats_t ml_stats(num_nodes, num_epochs);
-    
     for(uint32_t trial_num = 0; trial_num < num_trials; ++trial_num) {
-        log_reg::multinomial_log_reg m_log_reg(
-                [&]() {
-                    return (utils::dataset)numpy::numpy_dataset(
-                            data_directory + "/" + data, (num_nodes - 1), 0);
-                },
-                alpha, gamma, decay, batch_size);
+      std::cout << "trial_num " << trial_num << std::endl;
+      // Initialize m_log_reg, ml_sst, ml_stat, and worker for training
+      log_reg::multinomial_log_reg m_log_reg([&]() {
+                                               return (utils::dataset)numpy::numpy_dataset(
+					       data_directory + "/" + data,
+		         		       (num_nodes - 1), node_rank);
+					     },
+                         	             alpha, gamma, decay, batch_size);
+      sst::MLSST ml_sst(members, node_rank,
+			m_log_reg.get_model_size(), num_nodes);
+      m_log_reg.set_model_mem((double*)std::addressof(ml_sst.model_or_gradient[0][0]));
+      utils::ml_stat_t ml_stat(trial_num, num_nodes, num_epochs,
+			       alpha, decay, batch_size, node_rank,
+			       ml_sst, m_log_reg);
+      server::async_server server(m_log_reg, ml_sst, ml_stat);
 
-        const size_t num_batches = m_log_reg.get_num_batches();
+      // Train
+      server.train(num_epochs);
+      std::cout << "trial_num " << trial_num << " done." << std::endl;
+      std::cout << "Collecting results..." << std::endl;
+      for(size_t epoch_num = 0; epoch_num < num_epochs + 1; ++epoch_num) {
+	ml_stat.collect_results(epoch_num, m_log_reg);
+      }
+      ml_stat.print_results();
+      ml_stat.fout_log_per_epoch();
+      ml_stat.fout_analysis_per_epoch();
+      ml_stat.fout_gradients_per_epoch();
+      ml_stat.fout_op_time_log(true); // is_server == true
+      ml_stats.push_back(ml_stat);
+      std::cout << "Collecting results done." << std::endl;
+      ml_sst.sync_with_members(); // barrier pair with worker #5
 
-        sst::MLSST ml_sst(members, 0, m_log_reg.get_model_size(), num_nodes);
-        m_log_reg.set_model_mem((double*)std::addressof(ml_sst.model_or_gradient[0][0]));
-        utils::ml_stat_t ml_stat(trial_num, num_nodes, num_epochs,
-				 alpha, decay, batch_size,
-				 ml_sst, m_log_reg);
-	
-	server::async_server server(m_log_reg, ml_sst, ml_stat);
-	server.train(num_epochs);
-	
-	std::cout << "trial_num " << trial_num << " done." << std::endl;
-	std::cout << "Collecting results..." << std::endl;
-	
-	for(size_t epoch_num = 0; epoch_num < num_epochs + 1; ++epoch_num) {
-	  ml_stat.collect_results(epoch_num, m_log_reg);
-	}
-	ml_stats.push_back(ml_stat);
-
-	ml_stat.print_results();
-	ml_stat.fout_log_per_epoch();
-	ml_stat.fout_analysis_per_epoch();
-	ml_stat.fout_gradients_per_epoch();
-	ml_stat.fout_op_time_log();
-        ml_sst.sync_with_members();
-
-	if (trial_num == num_trials - 1) {
-	  ml_stats.compute_mean();
-	  ml_stats.compute_std();
-	  ml_stats.compute_err();
-    
-	  // Write a file with hyper params and store model when cur_loss < prev_loss
-	  std::string target_dir = data_directory + "/" + data;
-	  ml_stats.grid_search_helper(target_dir);
-	  ml_stats.fout_log_mean_per_epoch();
-	  ml_stats.fout_log_err_per_epoch();
-	  ml_stats.fout_analysis_mean_per_epoch();
-	  ml_stats.fout_analysis_err_per_epoch();
-	  ml_stats.fout_gradients_mean_per_epoch();
-	  ml_stats.fout_gradients_err_per_epoch();
-	  ml_sst.sync_with_members();
-	}
+      if (trial_num == num_trials - 1) {
+	// Compute statistics, log files, and store model
+	std::cout << "Compute statistics..." << std::endl;
+	ml_stats.compute_mean();
+	ml_stats.compute_std();
+	ml_stats.compute_err();
+	ml_stats.fout_log_mean_per_epoch();
+	ml_stats.fout_log_err_per_epoch();
+	ml_stats.fout_analysis_mean_per_epoch();
+	ml_stats.fout_analysis_err_per_epoch();
+	ml_stats.fout_gradients_mean_per_epoch();
+	ml_stats.fout_gradients_err_per_epoch();
+	std::string target_dir = data_directory + "/" + data;
+	ml_stats.grid_search_helper(target_dir);
+	std::cout << "Compute statistics done." << std::endl;
+	std::cout << "All trainings and loggings done." << std::endl;
+	ml_sst.sync_with_members(); // barrier pair with worker #6
+      }
     }
 }
 
@@ -163,7 +166,7 @@ void server::async_server::train(const size_t num_epochs) {
 					     t2 = (end_t.tv_sec - start_t.tv_sec) * 1e9
 					       + (end_t.tv_nsec - start_t.tv_nsec);
 						     
-					     ml_stat.op_time_log_q.push({{t1, t2}, row});
+					     ml_stat.timer.op_time_log_q.push({{t1, t2}, row});
 					     target_nodes.push_back(row);
 					     ml_sst.round[0]++;
 					   }
@@ -179,19 +182,19 @@ void server::async_server::train(const size_t num_epochs) {
 					   t4 = (end_t.tv_sec - start_t.tv_sec) * 1e9
 					     + (end_t.tv_nsec - start_t.tv_nsec);
 					   num_broadcasts++;
-					   ml_stat.op_time_log_q.push({{t3, t4}, 0});
+					   ml_stat.timer.op_time_log_q.push({{t3, t4}, 0});
 					   target_nodes.clear();
 					 }
 				       }
 				     };
   std::thread model_update_broadcast_thread = std::thread(model_update_broadcast_loop);
-  ml_sst.sync_with_members();
+  ml_sst.sync_with_members(); // barrier pair with worker #1
   clock_gettime(CLOCK_REALTIME, &start_t);
   std::cout << "clock reset" << std::endl;
   struct timespec start_time, end_time;
   for(size_t epoch_num = 0; epoch_num < num_epochs; ++epoch_num) {
     clock_gettime(CLOCK_REALTIME, &start_time);
-    ml_sst.sync_with_members();
+    ml_sst.sync_with_members(); // barrier pair with worker #2
     clock_gettime(CLOCK_REALTIME, &end_time);
     uint64_t t5 = 0;
     uint64_t t6 = 0;
@@ -208,11 +211,12 @@ void server::async_server::train(const size_t num_epochs) {
     clock_gettime(CLOCK_REALTIME, &end_t);
     t6 = (end_t.tv_sec - start_t.tv_sec) * 1e9
       + (end_t.tv_nsec - start_t.tv_nsec);
-    ml_stat.op_time_log_q.push({{t5, t6}, 100});
+    ml_stat.timer.op_time_log_q.push({{t5, t6}, 100});
 	  
-    ml_sst.sync_with_members();
+    ml_sst.sync_with_members(); // barrier pair with worker #3
   }
 	
   trial_finished = true;
   model_update_broadcast_thread.join();
+  ml_sst.sync_with_members(); // barrier pair with worker #4
 }

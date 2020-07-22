@@ -2,15 +2,37 @@
 
 #include "coordinator/ml_sst.hpp"
 #include "log_reg.hpp"
+#include <chrono>
 #include <queue>
 
 namespace utils {
+class ml_timer_t {
+public:
+  ml_timer_t();
+  void set_start_time();
+  void set_wait_start();  
+  void set_wait_end();
+  void set_compute_start();
+  void set_compute_end();
+  void set_push_start();
+  void set_push_end();
+
+  struct timespec start_time, end_time;
+  uint64_t relay_start, relay_end;
+  uint64_t compute_start, compute_end;
+  uint64_t push_start, push_end;
+  uint64_t wait_start, wait_end;
+  uint64_t relay_total, compute_total, push_total, wait_total;
+  std::queue<std::pair<std::pair<uint64_t, uint64_t>, uint32_t>> op_time_log_q;
+};
+  
 class ml_stat_t {
 public:
+    // This dummy constructor just below is for std and err in ml_stats_t.
     ml_stat_t(uint32_t num_nodes, uint32_t num_epochs);
     ml_stat_t(uint32_t trial_num, uint32_t num_nodes,
 	       uint32_t num_epochs, double alpha,
-	      double decay, double batch_size,
+	      double decay, double batch_size, const uint32_t node_rank,
               const sst::MLSST& ml_sst,
               log_reg::multinomial_log_reg& m_log_reg);
 
@@ -23,7 +45,7 @@ public:
     void fout_log_per_epoch();
     void fout_analysis_per_epoch();
     void fout_gradients_per_epoch();
-    void fout_op_time_log();
+    void fout_op_time_log(bool is_server);
   
     uint32_t trial_num;
     uint32_t num_nodes;
@@ -31,6 +53,7 @@ public:
     double alpha;
     double decay;
     double batch_size;
+    const uint32_t node_rank;
     size_t model_size;
 
     std::vector<double*> intermediate_models;
@@ -48,7 +71,7 @@ public:
     std::vector<double> dist_to_opt;
     std::vector<double> grad_norm;
 
-    std::queue<std::pair<std::pair<uint64_t, uint64_t>, uint32_t>> op_time_log_q;
+    ml_timer_t timer;
 };
 
 class ml_stats_t {

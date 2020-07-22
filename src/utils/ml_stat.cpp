@@ -5,6 +5,61 @@
 
 #include "ml_stat.hpp"
 
+utils::ml_timer_t::ml_timer_t() : relay_start(0), relay_end(0),
+				 compute_start(0), compute_end(0),
+				 push_start(0), push_end(0),
+				 wait_start(0), wait_end(0),
+				 relay_total(0), compute_total(0),
+				 push_total(0), wait_total(0) {
+}
+
+void utils::ml_timer_t::set_start_time() {
+  clock_gettime(CLOCK_REALTIME, &start_time);
+}
+
+void utils::ml_timer_t::set_wait_start() {
+  clock_gettime(CLOCK_REALTIME, &end_time);
+  wait_start = (end_time.tv_sec - start_time.tv_sec) * 1e9
+    + (end_time.tv_nsec - start_time.tv_nsec);
+}
+
+void utils::ml_timer_t::set_wait_end() {
+  clock_gettime(CLOCK_REALTIME, &end_time);
+  wait_end = (end_time.tv_sec - start_time.tv_sec) * 1e9
+    + (end_time.tv_nsec - start_time.tv_nsec);
+  op_time_log_q.push({{wait_start, wait_end}, 0});
+  wait_total += wait_end - wait_start;
+}
+
+void utils::ml_timer_t::set_compute_start() {
+  clock_gettime(CLOCK_REALTIME, &end_time);
+  compute_start = (end_time.tv_sec - start_time.tv_sec) * 1e9
+    + (end_time.tv_nsec - start_time.tv_nsec);
+}
+
+void utils::ml_timer_t::set_compute_end() {
+  clock_gettime(CLOCK_REALTIME, &end_time);
+  compute_end = (end_time.tv_sec - start_time.tv_sec) * 1e9
+    + (end_time.tv_nsec - start_time.tv_nsec);
+  op_time_log_q.push({{compute_start, compute_end}, 2});
+  compute_total += compute_end - compute_start;
+}
+
+void utils::ml_timer_t::set_push_start() {
+  clock_gettime(CLOCK_REALTIME, &end_time);
+  push_start = (end_time.tv_sec - start_time.tv_sec) * 1e9
+    + (end_time.tv_nsec - start_time.tv_nsec);
+}
+
+void utils::ml_timer_t::set_push_end() {
+  clock_gettime(CLOCK_REALTIME, &end_time);
+  push_end = (end_time.tv_sec - start_time.tv_sec) * 1e9
+    + (end_time.tv_nsec - start_time.tv_nsec);
+      
+  op_time_log_q.push({{push_start, push_end}, 3});
+  push_total += push_end - push_start;
+}
+
 utils::ml_stat_t::ml_stat_t(uint32_t num_nodes, uint32_t num_epochs) :
   trial_num(0),
   num_nodes(0),
@@ -12,6 +67,7 @@ utils::ml_stat_t::ml_stat_t(uint32_t num_nodes, uint32_t num_epochs) :
   alpha(0.0),
   decay(0.0),
   batch_size(0),
+  node_rank(-1),
   model_size(0),
   intermediate_models(num_epochs + 1),
   cumulative_num_broadcasts(num_epochs + 1, 0),
@@ -24,13 +80,14 @@ utils::ml_stat_t::ml_stat_t(uint32_t num_nodes, uint32_t num_epochs) :
   loss_gap(num_epochs + 1, 0),
   dist_to_opt(num_epochs + 1, 0),
   grad_norm(num_epochs + 1, 0),
-  num_lost_gradients_per_node(num_nodes, 0)
+  num_lost_gradients_per_node(num_nodes, 0),
+  timer()
 {
 }
 
 utils::ml_stat_t::ml_stat_t(uint32_t trial_num, uint32_t num_nodes,
 	       uint32_t num_epochs, double alpha,
-	      double decay, double batch_size,
+	      double decay, double batch_size, const uint32_t node_rank,
               const sst::MLSST& ml_sst,
               log_reg::multinomial_log_reg& m_log_reg)
         : trial_num(trial_num),
@@ -39,6 +96,7 @@ utils::ml_stat_t::ml_stat_t(uint32_t trial_num, uint32_t num_nodes,
           alpha(alpha),
           decay(decay),
           batch_size(batch_size),
+	  node_rank(node_rank),
           model_size(m_log_reg.get_model_size()),
           intermediate_models(num_epochs + 1),
           cumulative_num_broadcasts(num_epochs + 1, 0),
@@ -51,7 +109,9 @@ utils::ml_stat_t::ml_stat_t(uint32_t trial_num, uint32_t num_nodes,
           loss_gap(num_epochs + 1, 0),
           dist_to_opt(num_epochs + 1, 0),
           grad_norm(num_epochs + 1, 0),
-	  num_lost_gradients_per_node(num_nodes, 0) {
+	  num_lost_gradients_per_node(num_nodes, 0),
+	  timer()
+{
     for(uint epoch_num = 0; epoch_num < num_epochs + 1; ++epoch_num) {
         intermediate_models[epoch_num] = new double[model_size];
         for(uint i = 0; i < model_size; ++i) {
@@ -212,12 +272,28 @@ void utils::ml_stat_t::fout_gradients_per_epoch() {
   }
 }
 
-void utils::ml_stat_t::fout_op_time_log() {
-  std::ofstream server_log_file("server.log", std::ofstream::trunc);
-  while (!op_time_log_q.empty()) {
-    std::pair<std::pair<uint64_t, uint64_t>, uint32_t> item = op_time_log_q.front();
-    op_time_log_q.pop();
-    server_log_file <<  item.first.first << " " << item.first.second << " " << item.second << std::endl;
+// time taken measurement per operation for the colorful graph
+void utils::ml_stat_t::fout_op_time_log(bool is_server) {
+  std::ofstream log_file;
+  if (is_server) {
+    log_file.open("server.log", std::ofstream::trunc);
+  } else {
+    log_file.open("worker.log", std::ofstream::trunc);
+  }
+  while (!timer.op_time_log_q.empty()) {
+    std::pair<std::pair<uint64_t, uint64_t>, uint32_t> item = timer.op_time_log_q.front();
+    timer.op_time_log_q.pop();
+    log_file <<  item.first.first << " " << item.first.second << " " << item.second << std::endl;
+  }
+  if (!is_server) {
+    std::ofstream worker_stat_file("worker" + std::to_string(node_rank) + ".stat",
+				   std::ofstream::trunc);
+    uint64_t total = timer.relay_total + timer.compute_total + timer.push_total + timer.wait_total;
+    worker_stat_file <<  "relay " << "compute " << "push " << "wait " << "total " << std::endl;
+    worker_stat_file <<  timer.relay_total << " " << timer.compute_total << " "
+		     << timer.push_total << " " << timer.wait_total << " " << total << std::endl;
+    worker_stat_file <<  float(timer.relay_total)/total << " " << float(timer.compute_total)/total << " "
+		     << float(timer.push_total)/total << " " << float(timer.wait_total)/total << " " << total << std::endl;
   }
 }
 
@@ -640,4 +716,3 @@ void utils::ml_stats_t::fout_gradients_err_per_epoch() {
     gradients_err_file << std::endl;
   }
 }
-
