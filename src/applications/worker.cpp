@@ -80,6 +80,8 @@ int main(int argc, char* argv[]) {
 			       alpha, decay, batch_size, node_rank,
 			       ml_sst, m_log_reg);
       worker::worker* wrk;
+      // Deconstructor will be called but do nothing and the object will still be alive.
+      // TODO: find a better way
       if(algorithm == "sync") {
 	worker::sync_worker sync(m_log_reg, ml_sst, ml_stat, node_rank);
 	wrk = &sync;
@@ -93,6 +95,7 @@ int main(int argc, char* argv[]) {
 
       // Train
       wrk->train(num_epochs);
+      
       std::cout << "trial_num " << trial_num << " done." << std::endl;
       std::cout << "Collecting results..." << std::endl;
       ml_stat.fout_op_time_log(false); // is_server == false
@@ -122,13 +125,22 @@ worker::sync_worker::sync_worker(log_reg::multinomial_log_reg& m_log_reg,
 				   const uint32_t node_rank)
   : worker(m_log_reg, ml_sst, ml_stat, node_rank) {
 }
-  
+
+worker::sync_worker::~sync_worker() {
+  std::cout << "sync_worker deconstructor does nothing." << std::endl;
+}
+
 void worker::sync_worker::train(const size_t num_epochs) {
   ml_sst.sync_with_members(); // barrier pair with server #1
   ml_stat.timer.set_start_time();
   const size_t num_batches = m_log_reg.get_num_batches();
   for(size_t epoch_num = 0; epoch_num < num_epochs; ++epoch_num) {
     for(size_t batch_num = 0; batch_num < num_batches; ++batch_num) {
+      ml_stat.timer.set_wait_start();
+      while(ml_sst.round[0] < ml_sst.round[1]) {
+      }
+      ml_stat.timer.set_wait_end();
+      
       ml_stat.timer.set_compute_start();
       m_log_reg.compute_gradient(batch_num, m_log_reg.get_model());
       ml_stat.timer.set_compute_end();
@@ -137,11 +149,6 @@ void worker::sync_worker::train(const size_t num_epochs) {
       ml_stat.timer.set_push_start();
       ml_sst.put_with_completion();
       ml_stat.timer.set_push_end();
-      
-      ml_stat.timer.set_wait_start();
-      while(ml_sst.round[0] < ml_sst.round[1]) {
-      }
-      ml_stat.timer.set_wait_end();
     }
     ml_sst.sync_with_members(); // barrier pair with server #2
     // Between those two, server stores intermidiate models and parameters for statistics
@@ -155,6 +162,10 @@ worker::async_worker::async_worker(log_reg::multinomial_log_reg& m_log_reg,
 				   utils::ml_stat_t& ml_stat,
 				   const uint32_t node_rank)
   : worker(m_log_reg, ml_sst, ml_stat, node_rank) {
+}
+
+worker::async_worker::~async_worker() {
+  std::cout << "async_worker deconstructor does nothing." << std::endl;
 }
 
 void worker::async_worker::train(const size_t num_epochs) {

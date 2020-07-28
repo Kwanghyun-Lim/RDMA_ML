@@ -34,6 +34,7 @@ public:
 		 const uint32_t node_rank);
 
   void train(const size_t num_epochs);
+  ~sync_worker();
 };
   
 class async_worker: public worker {
@@ -44,5 +45,6 @@ public:
 		 const uint32_t node_rank);
 
   void train(const size_t num_epochs);
+  ~async_worker();
 };
 }  // namespace coordinator

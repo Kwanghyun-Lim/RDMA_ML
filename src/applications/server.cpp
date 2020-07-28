@@ -90,6 +90,8 @@ int main(int argc, char* argv[]) {
 			       alpha, decay, batch_size, node_rank,
 			       ml_sst, m_log_reg);
       server::server* srv;
+      // Deconstructor will be called but do nothing and the object will still be alive.
+      // TODO: find a better way
       if(algorithm == "sync") {
 	server::sync_server sync(m_log_reg, ml_sst, ml_stat);
 	srv = &sync;
@@ -103,6 +105,7 @@ int main(int argc, char* argv[]) {
 
       // Train
       srv->train(num_epochs);
+      
       std::cout << "trial_num " << trial_num << " done." << std::endl;
       std::cout << "Collecting results..." << std::endl;
       for(size_t epoch_num = 0; epoch_num < num_epochs + 1; ++epoch_num) {
@@ -152,6 +155,10 @@ server::sync_server::sync_server(log_reg::multinomial_log_reg& m_log_reg,
   : server(m_log_reg, ml_sst, ml_stat) {
 }
 
+server::sync_server::~sync_server() {
+  std::cout << "sync_server destructor does nothing." << std::endl;
+}
+
 void server::sync_server::train(const size_t num_epochs) {
   ml_sst.sync_with_members(); // barrier pair with server #1
   ml_stat.timer.set_start_time();
@@ -190,6 +197,10 @@ void server::sync_server::train(const size_t num_epochs) {
 server::async_server::async_server(log_reg::multinomial_log_reg& m_log_reg,
 				   sst::MLSST& ml_sst, utils::ml_stat_t& ml_stat)
   : server(m_log_reg, ml_sst, ml_stat) {
+}
+
+server::async_server::~async_server() {
+  std::cout << "async_server destructor does nothing." << std::endl;
 }
 
 void server::async_server::train(const size_t num_epochs) {

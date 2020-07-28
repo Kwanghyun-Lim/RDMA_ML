@@ -29,6 +29,7 @@ public:
 	      sst::MLSST& ml_sst, utils::ml_stat_t& ml_stat);
 
   void train(const size_t num_epochs);
+  ~sync_server();
 };
   
 class async_server: public server {
@@ -37,5 +38,6 @@ public:
 	       sst::MLSST& ml_sst, utils::ml_stat_t& ml_stat);
 
   void train(const size_t num_epochs);
+  ~async_server();
 };
 }  // namespace server
