@@ -14,9 +14,11 @@
 #include "utils/numpy_reader.hpp"
 
 int main(int argc, char* argv[]) {
-    if(argc < 10) {
+    if(argc < 11) {
         std::cerr << "Usage: " << argv[0]
-		  << " <data_directory> <syn/mnist/rff> <alpha> <decay> <aggregate_batch_size> <num_epochs> <node_rank> <num_nodes> <num_trials>"
+		  << " <data_directory> <syn/mnist/rff> <sync/async> \
+                       <alpha> <decay> <aggregate_batch_size> \
+                       <num_epochs> <node_rank> <num_nodes> <num_trials>"
                   << std::endl;
         return 1;
     }
@@ -25,13 +27,14 @@ int main(int argc, char* argv[]) {
     std::string data_directory(argv[1]);
     std::string data(argv[2]);
     const double gamma = 0.0001;
-    const double alpha = std::stod(argv[3]);
-    double decay = std::stod(argv[4]);
-    uint32_t aggregate_batch_size = std::stod(argv[5]);
-    const uint32_t num_epochs = atoi(argv[6]);
-    const uint32_t node_rank = atoi(argv[7]);
-    const uint32_t num_nodes = atoi(argv[8]);
-    const uint32_t num_trials = atoi(argv[9]);
+    std::string algorithm(argv[3]);
+    const double alpha = std::stod(argv[4]);
+    double decay = std::stod(argv[5]);
+    uint32_t aggregate_batch_size = std::stod(argv[6]);
+    const uint32_t num_epochs = atoi(argv[7]);
+    const uint32_t node_rank = atoi(argv[8]);
+    const uint32_t num_nodes = atoi(argv[9]);
+    const uint32_t num_trials = atoi(argv[10]);
     const size_t batch_size = aggregate_batch_size / (num_nodes - 1);
     openblas_set_num_threads(1);
 
@@ -76,10 +79,20 @@ int main(int argc, char* argv[]) {
       utils::ml_stat_t ml_stat(trial_num, num_nodes, num_epochs,
 			       alpha, decay, batch_size, node_rank,
 			       ml_sst, m_log_reg);
-      worker::async_worker worker(m_log_reg, ml_sst, ml_stat, node_rank);
+      worker::worker* wrk;
+      if(algorithm == "sync") {
+	worker::sync_worker sync(m_log_reg, ml_sst, ml_stat, node_rank);
+	wrk = &sync;
+      } else if(algorithm == "async") {
+	worker::async_worker async(m_log_reg, ml_sst, ml_stat, node_rank);
+	wrk = &async;
+      } else {
+	std::cerr << "Wrong algorithm input: " << algorithm << std::endl;
+	exit(1);
+      }
 
       // Train
-      worker.train(num_epochs);
+      wrk->train(num_epochs);
       std::cout << "trial_num " << trial_num << " done." << std::endl;
       std::cout << "Collecting results..." << std::endl;
       ml_stat.fout_op_time_log(false); // is_server == false
@@ -92,11 +105,56 @@ int main(int argc, char* argv[]) {
     }
 }
 
+worker::worker::worker(log_reg::multinomial_log_reg& m_log_reg,
+		 sst::MLSST& ml_sst,
+		 utils::ml_stat_t& ml_stat,
+		 const uint32_t node_rank)
+  : m_log_reg(m_log_reg), ml_sst(ml_sst), ml_stat(ml_stat), node_rank(node_rank) {
+}
+
+void worker::worker::train(const size_t num_epochs) {
+  // virtual function
+}
+
+worker::sync_worker::sync_worker(log_reg::multinomial_log_reg& m_log_reg,
+				   sst::MLSST& ml_sst,
+				   utils::ml_stat_t& ml_stat,
+				   const uint32_t node_rank)
+  : worker(m_log_reg, ml_sst, ml_stat, node_rank) {
+}
+  
+void worker::sync_worker::train(const size_t num_epochs) {
+  ml_sst.sync_with_members(); // barrier pair with server #1
+  ml_stat.timer.set_start_time();
+  const size_t num_batches = m_log_reg.get_num_batches();
+  for(size_t epoch_num = 0; epoch_num < num_epochs; ++epoch_num) {
+    for(size_t batch_num = 0; batch_num < num_batches; ++batch_num) {
+      ml_stat.timer.set_compute_start();
+      m_log_reg.compute_gradient(batch_num, m_log_reg.get_model());
+      ml_stat.timer.set_compute_end();
+      ml_sst.round[1]++;
+      
+      ml_stat.timer.set_push_start();
+      ml_sst.put_with_completion();
+      ml_stat.timer.set_push_end();
+      
+      ml_stat.timer.set_wait_start();
+      while(ml_sst.round[0] < ml_sst.round[1]) {
+      }
+      ml_stat.timer.set_wait_end();
+    }
+    ml_sst.sync_with_members(); // barrier pair with server #2
+    // Between those two, server stores intermidiate models and parameters for statistics
+    ml_sst.sync_with_members(); // barrier pair with server #3
+  }
+  ml_sst.sync_with_members(); // barrier pair with server #4
+}
+
 worker::async_worker::async_worker(log_reg::multinomial_log_reg& m_log_reg,
 				   sst::MLSST& ml_sst,
 				   utils::ml_stat_t& ml_stat,
 				   const uint32_t node_rank)
-  : m_log_reg(m_log_reg), ml_sst(ml_sst), ml_stat(ml_stat), node_rank(node_rank) {
+  : worker(m_log_reg, ml_sst, ml_stat, node_rank) {
 }
 
 void worker::async_worker::train(const size_t num_epochs) {

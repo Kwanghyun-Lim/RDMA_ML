@@ -10,19 +10,39 @@
 #include "log_reg.hpp"
 
 namespace worker {
-class async_worker {
+class worker {
 public:
-    async_worker(log_reg::multinomial_log_reg& m_log_reg,
+  worker(log_reg::multinomial_log_reg& m_log_reg,
+		 sst::MLSST& ml_sst,
+		 utils::ml_stat_t& ml_stat,
+		 const uint32_t node_rank);
+
+  virtual void train(const size_t num_epochs);
+  
+protected:
+  log_reg::multinomial_log_reg& m_log_reg;
+  sst::MLSST& ml_sst;
+  utils::ml_stat_t& ml_stat;
+  const uint32_t node_rank;
+};
+
+class sync_worker: public worker {
+public:
+  sync_worker(log_reg::multinomial_log_reg& m_log_reg,
 		 sst::MLSST& ml_sst,
 		 utils::ml_stat_t& ml_stat,
 		 const uint32_t node_rank);
 
   void train(const size_t num_epochs);
+};
   
-private:
-  log_reg::multinomial_log_reg& m_log_reg;
-  sst::MLSST& ml_sst;
-  utils::ml_stat_t& ml_stat;
-  const uint32_t node_rank;
+class async_worker: public worker {
+public:
+  async_worker(log_reg::multinomial_log_reg& m_log_reg,
+		 sst::MLSST& ml_sst,
+		 utils::ml_stat_t& ml_stat,
+		 const uint32_t node_rank);
+
+  void train(const size_t num_epochs);
 };
 }  // namespace coordinator

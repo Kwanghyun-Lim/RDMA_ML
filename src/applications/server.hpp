@@ -10,15 +10,32 @@
 #include "log_reg.hpp"
 
 namespace server {
-class async_server {
+class server {
 public:
-  async_server(log_reg::multinomial_log_reg& m_log_reg, sst::MLSST& ml_sst, utils::ml_stat_t& ml_stat);
+  server(log_reg::multinomial_log_reg& m_log_reg,
+	 sst::MLSST& ml_sst, utils::ml_stat_t& ml_stat);
 
-  void train(const size_t num_epochs);
+  virtual void train(const size_t num_epochs);
   
-private:
+protected:
   log_reg::multinomial_log_reg& m_log_reg;
   sst::MLSST& ml_sst;
   utils::ml_stat_t& ml_stat;
 };
-}  // namespace coordinator
+  
+class sync_server: public server {
+public:
+  sync_server(log_reg::multinomial_log_reg& m_log_reg,
+	      sst::MLSST& ml_sst, utils::ml_stat_t& ml_stat);
+
+  void train(const size_t num_epochs);
+};
+  
+class async_server: public server {
+public:
+  async_server(log_reg::multinomial_log_reg& m_log_reg,
+	       sst::MLSST& ml_sst, utils::ml_stat_t& ml_stat);
+
+  void train(const size_t num_epochs);
+};
+}  // namespace server
