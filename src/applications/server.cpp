@@ -193,8 +193,7 @@ server::async_server::async_server(log_reg::multinomial_log_reg& m_log_reg,
 }
 
 void server::async_server::train(const size_t num_epochs) {
-  volatile bool training = false;
-  
+  std::atomic<bool> training = true;
   auto model_update_broadcast_loop =
     [this, num_epochs, &training]() mutable {
       pthread_setname_np(pthread_self(), ("update_broadcast"));
@@ -232,7 +231,6 @@ void server::async_server::train(const size_t num_epochs) {
   std::thread model_update_broadcast_thread = std::thread(model_update_broadcast_loop);
   ml_sst.sync_with_members(); // barrier pair with worker #1
   ml_stat.timer.set_start_time();
-  training = true;
   for(size_t epoch_num = 0; epoch_num < num_epochs; ++epoch_num) {
     // Between the barrier #1 above and #2 below, workers train.
     ml_stat.timer.set_train_start();
