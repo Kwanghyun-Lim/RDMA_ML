@@ -80,8 +80,8 @@ int main(int argc, char* argv[]) {
 			       alpha, decay, batch_size, node_rank,
 			       ml_sst, m_log_reg);
       worker::worker* wrk;
-      // Deconstructor will be called but do nothing and the object will still be alive.
-      // TODO: find a better way
+      // Destructor will be called but do nothing and the object will still be alive.
+      // TODO: find a better method
       if(algorithm == "sync") {
 	worker::sync_worker sync(m_log_reg, ml_sst, ml_stat, node_rank);
 	wrk = &sync;

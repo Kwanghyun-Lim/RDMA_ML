@@ -90,8 +90,8 @@ int main(int argc, char* argv[]) {
 			       alpha, decay, batch_size, node_rank,
 			       ml_sst, m_log_reg);
       server::server* srv;
-      // Deconstructor will be called but do nothing and the object will still be alive.
-      // TODO: find a better way
+      // Destructor will be called but do nothing and the object will still be alive.
+      // TODO: find a better method
       if(algorithm == "sync") {
 	server::sync_server sync(m_log_reg, ml_sst, ml_stat);
 	srv = &sync;

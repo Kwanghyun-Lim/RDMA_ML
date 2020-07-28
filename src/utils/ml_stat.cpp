@@ -13,6 +13,11 @@ utils::ml_timer_t::ml_timer_t() : relay_start(0), relay_end(0),
 				 push_total(0), wait_total(0) {
 }
 
+#define WAIT 0
+#define COMPUTE 1
+#define PUSH 2
+#define RELAY 3
+
 void utils::ml_timer_t::set_start_time() {
   clock_gettime(CLOCK_REALTIME, &start_time);
 }
@@ -27,7 +32,7 @@ void utils::ml_timer_t::set_wait_end() {
   clock_gettime(CLOCK_REALTIME, &end_time);
   wait_end = (end_time.tv_sec - start_time.tv_sec) * 1e9
     + (end_time.tv_nsec - start_time.tv_nsec);
-  op_time_log_q.push({{wait_start, wait_end}, 0});
+  op_time_log_q.push({{wait_start, wait_end}, WAIT});
   wait_total += wait_end - wait_start;
 }
 
@@ -41,7 +46,7 @@ void utils::ml_timer_t::set_compute_end() {
   clock_gettime(CLOCK_REALTIME, &end_time);
   compute_end = (end_time.tv_sec - start_time.tv_sec) * 1e9
     + (end_time.tv_nsec - start_time.tv_nsec);
-  op_time_log_q.push({{compute_start, compute_end}, 2});
+  op_time_log_q.push({{compute_start, compute_end}, COMPUTE});
   compute_total += compute_end - compute_start;
 }
 
@@ -56,7 +61,7 @@ void utils::ml_timer_t::set_push_end() {
   push_end = (end_time.tv_sec - start_time.tv_sec) * 1e9
     + (end_time.tv_nsec - start_time.tv_nsec);
       
-  op_time_log_q.push({{push_start, push_end}, 3});
+  op_time_log_q.push({{push_start, push_end}, PUSH});
   push_total += push_end - push_start;
 }
 
@@ -290,7 +295,7 @@ void utils::ml_stat_t::fout_op_time_log(bool is_server) {
   if (is_server) {
     log_file.open("server.log", std::ofstream::trunc);
   } else {
-    log_file.open("worker.log", std::ofstream::trunc);
+    log_file.open("worker" + std::to_string(node_rank) + ".log", std::ofstream::trunc);
   }
   while (!timer.op_time_log_q.empty()) {
     std::pair<std::pair<uint64_t, uint64_t>, uint32_t> item = timer.op_time_log_q.front();
