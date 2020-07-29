@@ -1,0 +1,58 @@
+\documentclass{standalone}
+
+\usepackage{standalone}
+\usepackage{pgfplots}
+\usepackage{graphicx}
+
+\begin{document}
+\begin{tikzpicture}
+  \begin{axis}[
+    title = Training time per epoch with 15 workers,
+    legend style={
+      cells={anchor=east},
+      legend pos={north west},
+    },
+    xlabel = Number of epochs,
+    ylabel near ticks,
+    yticklabel pos=left,
+    ytick distance = 1,
+    ytick pos = right,
+    ymin = 0,
+    ymax = 3,
+    ylabel = Time  (s)
+    ]
+    \addplot[
+    forget plot,
+    color=red,
+    mark=x,
+    style=solid,thick,
+    ] table [x={num_epochs}, y={time_taken}]{/home/kwang/Desktop/convex_exp/data/extra_120batch/RDMAwild.data};
+    \addlegendimage{mark=x, red, thick}
+    \addlegendentry{RDMAwild!}
+    \addplot[
+    forget plot,
+    color=teal,
+    mark=*,
+    style=solid,thick,
+    ] table [x={num_epochs}, y={time_taken}]{/home/kwang/Desktop/convex_exp/data/extra_120batch/3waybuf.data};
+    \addlegendimage{mark=*, teal, thick}
+    \addlegendentry{RDMAwild! with 3waybuf}
+    \addplot[
+    forget plot,
+    color=blue,
+    mark=diamond,
+    style=solid,thick,
+    ] table [x={num_epochs}, y={time_taken}]{/home/kwang/Desktop/convex_exp/data/extra_120batch/sync.data};
+    \addlegendimage{mark=diamond, blue, thick}
+    \addlegendentry{sync}
+    \addplot[
+    forget plot,
+    color=yellow,
+    mark=o,
+    style=solid,thick,
+    ] table [x={num_epochs}, y={time_taken}]{/home/kwang/Desktop/convex_exp/data/extra_120batch/hogwild.data};
+    \addlegendimage{mark=o, yellow, thick}
+    \addlegendentry{hogwild!}
+  \end{axis}
+\end{tikzpicture}
+\end{document}

@@ -1,0 +1,58 @@
+\documentclass{standalone}
+
+\usepackage{standalone}
+\usepackage{pgfplots}
+\usepackage{graphicx}
+
+\begin{document}
+\begin{tikzpicture}
+  \begin{axis}[
+    title = Training time per worker under 100 epochs,
+    legend style={
+      cells={anchor=east},
+      legend pos={north east},
+    },
+    xlabel = Number of workers,
+    ylabel near ticks,
+    yticklabel pos=left,
+    ytick distance = 5,
+    ytick pos = right,
+    ymin = 0,
+    ymax = 50,
+    ylabel = Time  (s)
+    ]
+    \addplot[
+    forget plot,
+    color=red,
+    mark=x,
+    style=solid,thick,
+    ] table [x={num_workers}, y={training_time}]{../data/workers/RDMAwild_workers.data};
+    \addlegendimage{mark=x, red, thick}
+    \addlegendentry{RDMAwild!}
+    \addplot[
+    forget plot,
+    color=teal,
+    mark=*,
+    style=solid,thick,
+    ] table [x={num_workers}, y={training_time}]{../data/workers/3waybuf_workers.data};
+    \addlegendimage{mark=*, teal, thick}
+    \addlegendentry{RDMAwild! with 3waybuf}
+    \addplot[
+    forget plot,
+    color=blue,
+    mark=diamond,
+    style=solid,thick,
+    ] table [x={num_workers}, y={time_taken}]{../data/workers/sync_workers.data};
+    \addlegendimage{mark=diamond, blue, thick}
+    \addlegendentry{sync}
+    \addplot[
+    forget plot,
+    color=yellow,
+    mark=o,
+    style=solid,thick,
+    ] table [x={num_workers}, y={time_taken}]{../data/workers/hogwild_workers.data};
+    \addlegendimage{mark=o, yellow, thick}
+    \addlegendentry{hogwild!}
+  \end{axis}
+\end{tikzpicture}
+\end{document}

@@ -1,0 +1,47 @@
+\documentclass{standalone}
+
+\usepackage{standalone}
+\usepackage{pgfplots}
+\usepackage{graphicx}
+
+\begin{document}
+\begin{tikzpicture}
+  \begin{axis}[
+    title = distance to optimal model per epoch,
+    legend style={
+      cells={anchor=east},
+      legend pos={north east},
+    },
+    xlabel = Number of epochs,
+    xmin = 0,
+    xmax = 16,
+    ylabel = $\Vert W - W^* \Vert$,
+    ymin = 3,
+    ymax = 22,
+    ytick distance = 2,
+    ytick pos = left,
+    ylabel near ticks,
+    yticklabel pos=left,
+    ]
+    
+    \addplot[
+    forget plot,
+    color=teal,
+    mark=o,
+    style=solid,thick,
+    ] table [x={num_epochs}, y={dist_to_opt}]{/home/kwang/RDMA_ML/experiments/mnist/sync/logs/RDMAwild.log.mean};
+    \addlegendimage{mark=o, teal, thick}
+    \addlegendentry{sync}
+    
+    \addplot[
+    forget plot,
+    color=blue,
+    mark=diamond,
+    style=solid,thick,
+    ] table [x={num_epochs}, y={dist_to_opt}]{/home/kwang/RDMA_ML/experiments/mnist/async/logs/RDMAwild.log.mean};
+    \addlegendimage{mark=diamond, blue, thick}
+    \addlegendentry{async}
+
+  \end{axis}
+\end{tikzpicture}
+\end{document}

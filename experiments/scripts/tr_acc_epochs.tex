@@ -1,0 +1,47 @@
+\documentclass{standalone}
+
+\usepackage{standalone}
+\usepackage{pgfplots}
+\usepackage{graphicx}
+
+\begin{document}
+\begin{tikzpicture}
+  \begin{axis}[
+    title = Training accuracy per epoch,
+    legend style={
+      cells={anchor=east},
+      legend pos={south east},
+    },
+    xlabel = Number of epochs,
+    ylabel = Training Accuracy (\%),
+    xmin = 0,
+    xmax = 16,
+    ymin = 80,
+    ymax = 95,
+    ytick distance = 2,
+    ytick pos = left,
+    ylabel near ticks,
+    yticklabel pos=left,
+    ]
+    
+    \addplot[
+    forget plot,
+    color=teal,
+    mark=o,
+    style=solid,thick,
+    ] table [x={num_epochs}, y={training_accuracy}]{/home/kwang/RDMA_ML/experiments/mnist/sync/logs/RDMAwild.log.mean};
+    \addlegendimage{mark=o, teal, thick}
+    \addlegendentry{sync}
+    
+    \addplot[
+    forget plot,
+    color=blue,
+    mark=diamond,
+    style=solid,thick,
+    ] table [x={num_epochs}, y={training_accuracy}]{/home/kwang/RDMA_ML/experiments/mnist/async/logs/RDMAwild.log.mean};
+    \addlegendimage{mark=diamond, blue, thick}
+    \addlegendentry{async}
+    
+  \end{axis}
+\end{tikzpicture}
+\end{document}
