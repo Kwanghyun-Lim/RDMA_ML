@@ -332,12 +332,43 @@ public:
     void put_with_completion(long long int offset, long long int size) {
         put_with_completion(all_indices, offset, size);
     }
-
+  
     /** Writes a contiguous subset of the local row to some of the remote nodes. */
     void put(const std::vector<uint32_t> receiver_ranks, long long int offset, long long int size);
 
     void put_with_completion(const std::vector<uint32_t> receiver_ranks, long long int offset, long long int size);
 
+    /** For ml_sst **/
+#define ALL_FIELDS -1
+#define MODEL_OR_GRADIENT 0
+#define ROUND 1
+#define RELAY_TO 2
+#define RELAY_MODEL 3
+#define LAST_ROUND 4
+
+#define MODEL_OR_GRADIENT1 10
+#define ROUND1 11
+#define RELAY_TO1 12
+#define RELAY_MODEL1 13
+#define LAST_ROUND1 14
+
+#define MODEL_OR_GRADIENT2 20
+#define ROUND2 21
+#define RELAY_TO2 22
+#define RELAY_MODEL2 23
+#define LAST_ROUND2 24
+  
+  void put_with_completion(const std::vector<uint32_t> receiver_ranks, int field_to_push) {
+    long long int offset;
+    long long int size;
+    if(field_to_push == ALL_FIELDS) {
+      offset = 0;
+      size = rowLen;
+    }
+    put_with_completion(receiver_ranks, offset, size);
+  }
+
+  
 private:
     using char_p = volatile char*;
 

@@ -52,14 +52,22 @@ int main(int argc, char* argv[]) {
     ip_addrs_static[9] = "192.168.99.27";
     ip_addrs_static[10] = "192.168.99.23";
     ip_addrs_static[11] = "192.168.99.105";
-    ip_addrs_static[12] = "192.168.99.29";
-    ip_addrs_static[13] = "192.168.99.26";
-    ip_addrs_static[14] = "192.168.99.106";
-    ip_addrs_static[15] = "192.168.99.28";
+    ip_addrs_static[12] = "192.168.99.28";
+    ip_addrs_static[13] = "192.168.99.29";
+    ip_addrs_static[14] = "192.168.99.26";
+    ip_addrs_static[15] = "192.168.99.106";
     std::map<uint32_t, std::string> ip_addrs;
     ip_addrs[0] = ip_addrs_static.at(0);
     ip_addrs[node_rank] = ip_addrs_static.at(node_rank);
     sst::verbs_initialize(ip_addrs, node_rank);
+    
+    // std::map<uint32_t, std::string> ip_addrs;
+    // for(uint32_t i = 0; i < num_nodes; ++i) {
+    //   ip_addrs[i] = ip_addrs_static.at(i);
+    // }
+    // sst::verbs_initialize(ip_addrs, node_rank);
+    // std::vector<uint32_t> members(num_nodes);
+    // std::iota(members.begin(), members.end(), 0);
     
     // multiple trials for statistics
     for(uint32_t trial_num = 0; trial_num < num_trials; ++trial_num) {
@@ -71,6 +79,7 @@ int main(int argc, char* argv[]) {
 					     (num_nodes - 1), node_rank - 1);
 					     },
 					     alpha, gamma, decay, batch_size);
+      // sst::MLSST ml_sst(members, node_rank, m_log_reg.get_model_size(), num_nodes);
       sst::MLSST ml_sst(std::vector<uint32_t>{0, node_rank}, node_rank,
 			m_log_reg.get_model_size(), num_nodes);
       m_log_reg.set_model_mem((double*)std::addressof(ml_sst.model_or_gradient[0][0]));
@@ -80,14 +89,10 @@ int main(int argc, char* argv[]) {
 			       alpha, decay, batch_size, node_rank,
 			       ml_sst, m_log_reg);
       worker::worker* wrk;
-      // Destructor will be called but do nothing and the object will still be alive.
-      // TODO: find a better method
       if(algorithm == "sync") {
-	worker::sync_worker sync(m_log_reg, ml_sst, ml_stat, node_rank);
-	wrk = &sync;
+	wrk = new worker::sync_worker(m_log_reg, ml_sst, ml_stat, node_rank);
       } else if(algorithm == "async") {
-	worker::async_worker async(m_log_reg, ml_sst, ml_stat, node_rank);
-	wrk = &async;
+	wrk = new worker::async_worker(m_log_reg, ml_sst, ml_stat, node_rank);
       } else {
 	std::cerr << "Wrong algorithm input: " << algorithm << std::endl;
 	exit(1);
@@ -133,6 +138,8 @@ worker::sync_worker::~sync_worker() {
 void worker::sync_worker::train(const size_t num_epochs) {
   ml_sst.sync_with_members(); // barrier pair with server #1
   ml_stat.timer.set_start_time();
+  std::vector<uint32_t> server{0};
+
   const size_t num_batches = m_log_reg.get_num_batches();
   for(size_t epoch_num = 0; epoch_num < num_epochs; ++epoch_num) {
     for(size_t batch_num = 0; batch_num < num_batches; ++batch_num) {
@@ -148,6 +155,7 @@ void worker::sync_worker::train(const size_t num_epochs) {
       
       ml_stat.timer.set_push_start();
       ml_sst.put_with_completion();
+      // ml_sst.put_with_completion(server, ALL_FIELDS);
       ml_stat.timer.set_push_end();
     }
     ml_sst.sync_with_members(); // barrier pair with server #2
@@ -171,6 +179,8 @@ worker::async_worker::~async_worker() {
 void worker::async_worker::train(const size_t num_epochs) {
   ml_sst.sync_with_members(); // barrier pair with server #1
   ml_stat.timer.set_start_time();
+  std::vector<uint32_t> server{0};
+  
   const size_t num_batches = m_log_reg.get_num_batches();
   for(size_t epoch_num = 0; epoch_num < num_epochs; ++epoch_num) {
     for(size_t batch_num = 0; batch_num < num_batches; ++batch_num) {
@@ -186,6 +196,7 @@ void worker::async_worker::train(const size_t num_epochs) {
       ml_sst.round[1]++;
       ml_stat.timer.set_push_start();
       ml_sst.put_with_completion();
+      // ml_sst.put_with_completion(server, ALL_FIELDS);
       ml_stat.timer.set_push_end();
     }
     ml_sst.sync_with_members(); // barrier pair with server #2

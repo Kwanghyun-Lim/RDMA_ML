@@ -56,10 +56,11 @@ int main(int argc, char* argv[]) {
     ip_addrs_static[9] = "192.168.99.27";
     ip_addrs_static[10] = "192.168.99.23";
     ip_addrs_static[11] = "192.168.99.105";
-    ip_addrs_static[12] = "192.168.99.29";
-    ip_addrs_static[13] = "192.168.99.26";
-    ip_addrs_static[14] = "192.168.99.106";
-    ip_addrs_static[15] = "192.168.99.28";
+    ip_addrs_static[12] = "192.168.99.28";
+    ip_addrs_static[13] = "192.168.99.29";
+    ip_addrs_static[14] = "192.168.99.26";
+    ip_addrs_static[15] = "192.168.99.106";
+
     std::map<uint32_t, std::string> ip_addrs;
     for(uint32_t i = 0; i < num_nodes; ++i) {
         ip_addrs[i] = ip_addrs_static.at(i);
@@ -78,8 +79,10 @@ int main(int argc, char* argv[]) {
 		                       data_directory + "/" + data,
 		                       (num_nodes - 1), node_rank);},
                                        alpha, gamma, decay, batch_size);
+      std::cout << "before ml_sst" << std::endl;
       sst::MLSST ml_sst(members, node_rank,
 			m_log_reg.get_model_size(), num_nodes);
+      std::cout << "after ml_sst" << std::endl;
       m_log_reg.set_model_mem(
 	      (double*)std::addressof(ml_sst.model_or_gradient[0][0]));
       for (uint row = 1; row < ml_sst.get_num_rows(); ++row) {
@@ -90,14 +93,10 @@ int main(int argc, char* argv[]) {
 			       alpha, decay, batch_size, node_rank,
 			       ml_sst, m_log_reg);
       server::server* srv;
-      // Destructor will be called but do nothing and the object will still be alive.
-      // TODO: find a better method
       if(algorithm == "sync") {
-	server::sync_server sync(m_log_reg, ml_sst, ml_stat);
-	srv = &sync;
+	srv = new server::sync_server(m_log_reg, ml_sst, ml_stat);
       } else if(algorithm == "async") {
-	server::async_server async(m_log_reg, ml_sst, ml_stat);
-	srv = &async;
+	srv = new server::async_server(m_log_reg, ml_sst, ml_stat);
       } else {
 	std::cerr << "Wrong algorithm input: " << algorithm << std::endl;
 	exit(1);
@@ -165,6 +164,10 @@ void server::sync_server::train(const size_t num_epochs) {
   const uint32_t num_nodes = ml_sst.get_num_rows();
   const size_t num_batches = m_log_reg.get_num_batches();
   std::vector<bool> done(num_nodes, false);
+  std::vector<uint32_t> receivers;
+  for (int i = 1; i < num_nodes; ++i) {
+    receivers.push_back(i);
+  }
 
   for(size_t epoch_num = 0; epoch_num < num_epochs; ++epoch_num) {
     ml_stat.timer.set_train_start();
@@ -183,7 +186,10 @@ void server::sync_server::train(const size_t num_epochs) {
 	}
       }
       ml_sst.round[0]++;
+      ml_stat.timer.set_push_start();
       ml_sst.put_with_completion();
+      ml_stat.timer.set_push_end();
+      // ml_sst.put_with_completion(receivers, ALL_FIELDS);
     }
     ml_stat.timer.set_train_end();
     ml_sst.sync_with_members(); // barrier pair with worker #2
@@ -207,15 +213,16 @@ void server::async_server::train(const size_t num_epochs) {
   std::atomic<bool> training = true;
   auto model_update_broadcast_loop =
     [this, num_epochs, &training]() mutable {
-      pthread_setname_np(pthread_self(), ("update_broadcast"));
+      pthread_setname_np(pthread_self(), ("update"));
       const uint32_t num_nodes = ml_sst.get_num_rows();
       const size_t num_batches = m_log_reg.get_num_batches();
-      std::vector<uint32_t> target_nodes;
+      std::vector<uint32_t> receivers;
       while(training) {
 	for (uint row = 1; row < num_nodes; ++row) {
 	  // If new gradients arrived, update model
 	  if(ml_sst.last_round[0][row] < num_epochs * num_batches &&
 	     ml_sst.round[row] > ml_sst.last_round[0][row]) {
+	    // std::cout << "updated: row=" << row << "ml_sst.round=" << ml_sst.round[row] << std::endl;
 	    // Counts # of lost gradients.
 	    if(ml_sst.round[row] - ml_sst.last_round[0][row] > 1) {
 	      ml_stat.num_lost_gradients_per_node[row] +=
@@ -225,17 +232,24 @@ void server::async_server::train(const size_t num_epochs) {
 	    ml_stat.timer.set_compute_start();
 	    m_log_reg.update_model(row);
 	    ml_stat.timer.set_compute_end();
-	    target_nodes.push_back(row);
+	    receivers.push_back(row);
 	    ml_sst.round[0]++;
 	  }
 	}
 	
-	if(!target_nodes.empty()) {
+	if(!receivers.empty()) {
 	  ml_stat.timer.set_push_start();
-	  ml_sst.put_with_completion(target_nodes);
+	  // std::cout << "receivers= ";
+	  // for(int i = 0; i < receivers.size(); ++i) {
+	  //   std::cout << i << " ";
+	  // }
+	  // std::cout << std::endl;
+	  // std::cout << "before put_with_completion(receivers)" << std::endl;
+	  ml_sst.put_with_completion(receivers);
+	  // std::cout << "after put_with_completion(receivers)" << std::endl;
 	  ml_stat.timer.set_push_end();
 	  ml_stat.num_broadcasts++;
-	  target_nodes.clear();
+	  receivers.clear();
 	}
       }
     };
