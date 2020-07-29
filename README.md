@@ -1,6 +1,6 @@
 # RDMA_ML
 ## Grid search for async hyper-parameters
-* MNIST
+### MNIST
 Number of workers: 15
 Number of epochs: 15
 Batch size (total/per worker): 120/8 
@@ -16,7 +16,7 @@ decays: [0.9, 0.95, 0.99]
 
 result: lr=0.9, decay=0.9
 
-* MNIST RFF
+### MNIST RFF
 Number of workers: 15
 Number of epochs: 50
 Batch size (total/per worker): 120/8 
@@ -37,9 +37,9 @@ decays: [0.9, 0.95, 0.99]
 result: lr=9, decay=0.9
 
 ## How to run (Emacs Lisp)
-* MNIST
+### MNIST
 (run (lambda (x) (if (= x 1) "./server ~/RDMA_ML/dataset mnist sync 0.9 0.9 120 15 16 5 1" (concat "./worker ~/RDMA_ML/dataset mnist sync 0.9 0.9 120 15 " (number-to-string (1- x)) " 16 5 1"))))
 (run (lambda (x) (if (= x 1) "./server ~/RDMA_ML/dataset mnist async 0.9 0.9 120 15 16 5 1" (concat "./worker ~/RDMA_ML/dataset mnist async 0.9 0.9 120 15 " (number-to-string (1- x)) " 16 5 1"))))
-* RFF MNIST
+### RFF MNIST
 (run (lambda (x) (if (= x 1) "./server ~/RDMA_ML/dataset mnist sync 9 0.9 120 50 16 5 1" (concat "./worker ~/RDMA_ML/dataset mnist sync 9 0.9 120 50 " (number-to-string (1- x)) " 16 5 1"))))
 (run (lambda (x) (if (= x 1) "./server ~/RDMA_ML/dataset mnist async 9 0.9 120 50 16 5 1" (concat "./worker ~/RDMA_ML/dataset mnist async 9 0.9 120 50 " (number-to-string (1- x)) " 16 5 1"))))
