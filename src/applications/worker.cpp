@@ -16,7 +16,7 @@
 int main(int argc, char* argv[]) {
     if(argc < 11) {
         std::cerr << "Usage: " << argv[0]
-		  << " <data_directory> <syn/mnist/rff> <sync/async> \
+		  << " <data_directory> <syn/mnist/rff> <sync/async/fully_async> \
                        <alpha> <decay> <aggregate_batch_size> \
                        <num_epochs> <node_rank> <num_nodes> <num_trials>"
                   << std::endl;
@@ -93,6 +93,8 @@ int main(int argc, char* argv[]) {
 	wrk = new worker::sync_worker(m_log_reg, ml_sst, ml_stat, node_rank);
       } else if(algorithm == "async") {
 	wrk = new worker::async_worker(m_log_reg, ml_sst, ml_stat, node_rank);
+      } else if(algorithm == "fully_async") {
+	wrk = new worker::fully_async_worker(m_log_reg, ml_sst, ml_stat, node_rank);
       } else {
 	std::cerr << "Wrong algorithm input: " << algorithm << std::endl;
 	exit(1);
@@ -103,7 +105,11 @@ int main(int argc, char* argv[]) {
       
       std::cout << "trial_num " << trial_num << " done." << std::endl;
       std::cout << "Collecting results..." << std::endl;
-      ml_stat.fout_op_time_log(false); // is_server == false
+      if (algorithm == "fully_async") {
+	ml_stat.fout_op_time_log(false, true);
+      } else {
+	ml_stat.fout_op_time_log(false, false);
+      }
       std::cout << "Collecting results done." << std::endl;
       ml_sst.sync_with_members(); // barrier pair with server #5
       if (trial_num == num_trials - 1) {
@@ -205,3 +211,47 @@ void worker::async_worker::train(const size_t num_epochs) {
   }
   ml_sst.sync_with_members(); // barrier pair with server #4
 }
+
+worker::fully_async_worker::fully_async_worker(log_reg::multinomial_log_reg& m_log_reg,
+				   sst::MLSST& ml_sst,
+				   utils::ml_stat_t& ml_stat,
+				   const uint32_t node_rank)
+  : worker(m_log_reg, ml_sst, ml_stat, node_rank) {
+}
+
+worker::fully_async_worker::~fully_async_worker() {
+  std::cout << "fully_async_worker deconstructor does nothing." << std::endl;
+}
+
+void worker::fully_async_worker::train(const size_t num_epochs) {
+  ml_sst.sync_with_members(); // barrier pair with server #1
+  ml_stat.timer.set_start_time();
+  uint64_t last_model_round;
+  const size_t num_batches = m_log_reg.get_num_batches();
+  for(size_t epoch_num = 0; epoch_num < num_epochs; ++epoch_num) {
+    for(size_t batch_num = 0; batch_num < num_batches; ++batch_num) {
+
+      ml_stat.timer.set_compute_start();
+      m_log_reg.compute_gradient(batch_num, m_log_reg.get_model());
+      ml_stat.timer.set_compute_end(FRONT_END_THREAD);
+
+      last_model_round = ml_sst.round[0];
+      ml_sst.round[1]++;
+      
+      ml_stat.timer.set_push_start();
+      ml_sst.put_with_completion();
+      // ml_stat.timer.set_push_end(BACK_END_THREAD);
+      ml_stat.timer.set_push_end(FRONT_END_THREAD); // TO FIX
+      
+      ml_stat.timer.set_wait_start();
+      while (ml_sst.round[0] <= last_model_round) {
+      }
+      ml_stat.timer.set_wait_end(FRONT_END_THREAD);
+    }
+    ml_sst.sync_with_members(); // barrier pair with server #2
+    // Between those two, server stores intermidiate models and parameters for statistics
+    ml_sst.sync_with_members(); // barrier pair with server #3
+  }
+  ml_sst.sync_with_members(); // barrier pair with server #4
+}
+

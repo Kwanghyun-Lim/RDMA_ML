@@ -36,6 +36,21 @@ void utils::ml_timer_t::set_wait_end() {
   wait_total += wait_end - wait_start;
 }
 
+void utils::ml_timer_t::set_wait_end(int thread) {
+  clock_gettime(CLOCK_REALTIME, &end_time);
+  wait_end = (end_time.tv_sec - start_time.tv_sec) * 1e9
+    + (end_time.tv_nsec - start_time.tv_nsec);
+  if(thread == FRONT_END_THREAD) {
+    op_time_log_q_front.push({{wait_start, wait_end}, WAIT});
+  } else if(thread == BACK_END_THREAD) {
+    op_time_log_q_back.push({{wait_start, wait_end}, WAIT});
+  } else {
+    std::cerr << "Wrong input " << thread << std::endl;
+    exit(1);
+  }
+  wait_total += wait_end - wait_start;
+}
+
 void utils::ml_timer_t::set_compute_start() {
   clock_gettime(CLOCK_REALTIME, &end_time);
   compute_start = (end_time.tv_sec - start_time.tv_sec) * 1e9
@@ -50,6 +65,21 @@ void utils::ml_timer_t::set_compute_end() {
   compute_total += compute_end - compute_start;
 }
 
+void utils::ml_timer_t::set_compute_end(int thread) {
+  clock_gettime(CLOCK_REALTIME, &end_time);
+  compute_end = (end_time.tv_sec - start_time.tv_sec) * 1e9
+    + (end_time.tv_nsec - start_time.tv_nsec);
+  if(thread == FRONT_END_THREAD) {
+    op_time_log_q_front.push({{compute_start, compute_end}, COMPUTE});
+  } else if(thread == BACK_END_THREAD) {
+    op_time_log_q_back.push({{compute_start, compute_end}, COMPUTE});
+  } else {
+    std::cerr << "Wrong input " << thread << std::endl;
+    exit(1);
+  }
+  compute_total += compute_end - compute_start;
+}
+
 void utils::ml_timer_t::set_push_start() {
   clock_gettime(CLOCK_REALTIME, &end_time);
   push_start = (end_time.tv_sec - start_time.tv_sec) * 1e9
@@ -60,8 +90,23 @@ void utils::ml_timer_t::set_push_end() {
   clock_gettime(CLOCK_REALTIME, &end_time);
   push_end = (end_time.tv_sec - start_time.tv_sec) * 1e9
     + (end_time.tv_nsec - start_time.tv_nsec);
-      
   op_time_log_q.push({{push_start, push_end}, PUSH});
+  push_total += push_end - push_start;
+}
+
+void utils::ml_timer_t::set_push_end(int thread) {
+  clock_gettime(CLOCK_REALTIME, &end_time);
+  push_end = (end_time.tv_sec - start_time.tv_sec) * 1e9
+    + (end_time.tv_nsec - start_time.tv_nsec);
+
+  if(thread == FRONT_END_THREAD) {
+    op_time_log_q_front.push({{push_start, push_end}, PUSH});
+  } else if(thread == BACK_END_THREAD) {
+    op_time_log_q_back.push({{push_start, push_end}, PUSH});
+  } else {
+    std::cerr << "Wrong input: " << thread << std::endl;
+    exit(1);
+  }
   push_total += push_end - push_start;
 }
 
@@ -290,18 +335,51 @@ void utils::ml_stat_t::fout_gradients_per_epoch() {
 }
 
 // time taken measurement per operation for the colorful graph
-void utils::ml_stat_t::fout_op_time_log(bool is_server) {
+void utils::ml_stat_t::fout_op_time_log(bool is_server, bool is_fully_async) {
   std::ofstream log_file;
+  std::ofstream log_file_front;
+  std::ofstream log_file_back;
   if (is_server) {
-    log_file.open("server.log", std::ofstream::trunc);
+    if(!is_fully_async) {
+      log_file.open("server.log", std::ofstream::trunc);
+    } else {
+      log_file_front.open("server_front.log", std::ofstream::trunc);
+      log_file_back.open("server_back.log", std::ofstream::trunc);
+    }
   } else {
-    log_file.open("worker" + std::to_string(node_rank) + ".log", std::ofstream::trunc);
+    if(!is_fully_async) {
+      log_file.open("worker" + std::to_string(node_rank) + ".log", std::ofstream::trunc);
+    } else {
+      log_file_front.open("worker_front" + std::to_string(node_rank) + ".log",
+			  std::ofstream::trunc);
+      log_file_back.open("worker_back" + std::to_string(node_rank) + ".log",
+			 std::ofstream::trunc);
+    }
   }
-  while (!timer.op_time_log_q.empty()) {
-    std::pair<std::pair<uint64_t, uint64_t>, uint32_t> item = timer.op_time_log_q.front();
-    timer.op_time_log_q.pop();
-    log_file <<  item.first.first << " " << item.first.second << " " << item.second << std::endl;
+
+  if(!is_fully_async) {
+    while (!timer.op_time_log_q.empty()) {
+      std::pair<std::pair<uint64_t, uint64_t>, uint32_t> item = timer.op_time_log_q.front();
+      timer.op_time_log_q.pop();
+      log_file <<  item.first.first << " " << item.first.second << " "
+	       << item.second << std::endl;
+    }
+  } else {
+    while (!timer.op_time_log_q_front.empty()) {
+      std::pair<std::pair<uint64_t, uint64_t>, uint32_t> item = timer.op_time_log_q_front.front();
+      timer.op_time_log_q_front.pop();
+      log_file_front <<  item.first.first << " " << item.first.second << " "
+		     << item.second << std::endl;
+    }
+  
+    while (!timer.op_time_log_q_back.empty()) {
+      std::pair<std::pair<uint64_t, uint64_t>, uint32_t> item = timer.op_time_log_q_back.front();
+      timer.op_time_log_q_back.pop();
+      log_file_back <<  item.first.first << " " << item.first.second << " "
+		    << item.second << std::endl;
+    }
   }
+  
   if (!is_server) {
     std::ofstream worker_stat_file("worker" + std::to_string(node_rank) + ".stat",
 				   std::ofstream::trunc);

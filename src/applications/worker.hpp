@@ -47,4 +47,15 @@ public:
   void train(const size_t num_epochs);
   ~async_worker();
 };
+
+class fully_async_worker: public worker {
+public:
+  fully_async_worker(log_reg::multinomial_log_reg& m_log_reg,
+		 sst::MLSST& ml_sst,
+		 utils::ml_stat_t& ml_stat,
+		 const uint32_t node_rank);
+
+  void train(const size_t num_epochs);
+  ~fully_async_worker();
+};
 }  // namespace coordinator

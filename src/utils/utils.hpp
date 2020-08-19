@@ -1,10 +1,15 @@
 #pragma once
 
+#include <assert.h>
 #include <cblas.h>
 #include <cmath>
+#include <iostream>
 #include <functional>
 #include <memory>
 #include <string>
+
+#define NoTrans CblasNoTrans
+#define Trans CblasTrans
 
 namespace utils {
 
@@ -24,6 +29,16 @@ struct atomwrapper
   T get_val() {
     return _a.load();
   }
+};
+
+class matrix_t {
+public:
+  double* arr;
+  size_t num_rows;
+  size_t num_cols;
+  matrix_t(double* arr, size_t num_rows, size_t num_cols);
+  matrix_t(size_t num_rows, size_t num_cols);
+  void print();
 };
   
 class images_t {
@@ -70,6 +85,8 @@ typedef std::function<utils::dataset()> reader_t;
 
 void zero_arr(double* arr, const size_t size);
 void softmax(double* x, const size_t m, const size_t n);
+// numerically stable softmax
+void softmax(double* x, double* y, size_t m, size_t n);
 // assumes that C has the right dimension and n as lda
 void submatrix_multiply(CBLAS_TRANSPOSE TransA,
                         CBLAS_TRANSPOSE TransB,
@@ -79,4 +96,15 @@ void submatrix_multiply(CBLAS_TRANSPOSE TransA,
 			double alpha, double beta);
 
 std::string fullpath(const std::string& dir, const std::string& filename);
+
+void mat_mul(matrix_t& A, CBLAS_TRANSPOSE TransA, matrix_t& B, CBLAS_TRANSPOSE TransB, matrix_t& C);
+void submat_mul(
+   matrix_t& A, size_t ai, size_t aj, size_t submatA_num_rows, size_t submatA_num_cols, CBLAS_TRANSPOSE TransA,
+   matrix_t& B, size_t bi, size_t bj, size_t submatB_num_rows, size_t submatB_num_cols, CBLAS_TRANSPOSE TransB, matrix_t& C);
+void mat_add_assign(double beta, matrix_t& C, double alpha, matrix_t& A);
+void submat_add_assign(double beta, matrix_t& C, size_t ci, size_t cj, size_t submatC_num_rows, size_t submatC_num_cols,
+		       double alpha, matrix_t& A, size_t ai, size_t aj, size_t submatA_num_rows, size_t submatA_num_cols);
+void mat_trans(matrix_t& A, matrix_t& A_T);
+void submat_trans(matrix_t& A, size_t ai, size_t aj, size_t submatA_num_rows, size_t submatA_num_cols, matrix_t& A_T);
+double mat_norm(matrix_t& A);
 }  // namespace utils

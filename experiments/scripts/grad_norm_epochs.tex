@@ -15,7 +15,8 @@
     xlabel = Number of epochs,
     ylabel = Gradient Norm,
     xmin = 0,
-    xmax = 16,
+    %% xmax = 16,
+    xmax = 50,
     ymin = 0,
     ymax = 1.2,
     ytick distance = 0.1,
@@ -29,7 +30,7 @@
     color=teal,
     mark=o,
     style=solid,thick,
-    ] table [x={num_epochs}, y={grad_norm}]{/home/kwang/RDMA_ML/experiments/mnist/sync/logs/RDMAwild.log.mean};
+    ] table [x={num_epochs}, y={grad_norm}]{/home/kwang/RDMA_ML/experiments/rff/sync/logs/RDMAwild.log.mean};
     \addlegendimage{mark=o, teal, thick}
     \addlegendentry{sync}
     
@@ -38,7 +39,7 @@
     color=blue,
     mark=diamond,
     style=solid,thick,
-    ] table [x={num_epochs}, y={grad_norm}]{/home/kwang/RDMA_ML/experiments/mnist/async/logs/RDMAwild.log.mean};
+    ] table [x={num_epochs}, y={grad_norm}]{/home/kwang/RDMA_ML/experiments/rff/async/logs/RDMAwild.log.mean};
     \addlegendimage{mark=diamond, blue, thick}
     \addlegendentry{async}
 

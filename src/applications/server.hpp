@@ -40,4 +40,13 @@ public:
   void train(const size_t num_epochs);
   ~async_server();
 };
+
+class fully_async_server: public server {
+public:
+  fully_async_server(log_reg::multinomial_log_reg& m_log_reg,
+	       sst::MLSST& ml_sst, utils::ml_stat_t& ml_stat);
+
+  void train(const size_t num_epochs);
+  ~fully_async_server();
+};
 }  // namespace server

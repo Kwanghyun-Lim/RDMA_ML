@@ -14,9 +14,10 @@
     },
     xlabel = Number of epochs,
     xmin = 0,
-    xmax = 16,
+    %% xmax = 16,
+    xmax = 50,
     ylabel = $\Vert W - W^* \Vert$,
-    ymin = 3,
+    ymin = 0,
     ymax = 22,
     ytick distance = 2,
     ytick pos = left,
@@ -29,7 +30,7 @@
     color=teal,
     mark=o,
     style=solid,thick,
-    ] table [x={num_epochs}, y={dist_to_opt}]{/home/kwang/RDMA_ML/experiments/mnist/sync/logs/RDMAwild.log.mean};
+    ] table [x={num_epochs}, y={dist_to_opt}]{/home/kwang/RDMA_ML/experiments/rff/sync/logs/RDMAwild.log.mean};
     \addlegendimage{mark=o, teal, thick}
     \addlegendentry{sync}
     
@@ -38,7 +39,7 @@
     color=blue,
     mark=diamond,
     style=solid,thick,
-    ] table [x={num_epochs}, y={dist_to_opt}]{/home/kwang/RDMA_ML/experiments/mnist/async/logs/RDMAwild.log.mean};
+    ] table [x={num_epochs}, y={dist_to_opt}]{/home/kwang/RDMA_ML/experiments/rff/async/logs/RDMAwild.log.mean};
     \addlegendimage{mark=diamond, blue, thick}
     \addlegendentry{async}
 

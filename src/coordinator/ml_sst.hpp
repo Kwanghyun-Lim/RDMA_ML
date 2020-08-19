@@ -13,7 +13,8 @@ public:
     SSTFieldVector<double> model_or_gradient;
     SSTField<uint64_t> round;
     SSTFieldVector<uint64_t> last_round;
-
+    void print();
+  
 private:
     void initialize();
 };

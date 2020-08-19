@@ -16,5 +16,7 @@ add_subdirectory(utils)
 add_library(logistic_regression
   SHARED
   log_reg.hpp
-  log_reg.cpp)
+  log_reg.cpp
+  dnn.hpp
+  dnn.cpp)
 target_link_libraries(logistic_regression PUBLIC openblas utils)

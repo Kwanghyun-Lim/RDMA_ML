@@ -31,6 +31,38 @@ void sst::MLSST::initialize() {
     sync_with_members();
 }
 
+void sst::MLSST::print() {
+    uint32_t num_nodes = get_num_rows();
+
+    std::cout << "round ";
+    for(uint i = 0; i < num_nodes; ++i) {
+      std::cout << round[i] << " ";
+    }
+    std::cout << std::endl;
+
+    // std::cout << "relay_to";
+    // std::cout << std::endl;
+    // for(uint i = 0; i < num_nodes; ++i) {
+    //   std::cout << "[" << i << "] ";
+    //   for(uint j = 0; j < relay_to.size(); ++j) {
+    // 	std::cout << relay_to[i][j] << " ";
+    //   }
+    //   std::cout << std::endl;
+    // }
+    // std::cout << std::endl;
+
+    std::cout << "last_round";
+    std::cout << std::endl;
+    for(uint i = 0; i < num_nodes; ++i) {
+      std::cout << "[" << i << "] ";
+      for(uint j = 0; j < last_round.size(); ++j) {
+	std::cout << last_round[i][j] << " ";
+      }
+      std::cout << std::endl;
+    }
+    std::cout << std::endl;
+}
+
 // sst::MLSST::MLSST(const std::vector<uint32_t>& members,
 //                   const uint32_t my_id, const size_t num_params, const uint32_t num_nodes)
 //         : sst::SST<MLSST>(this, SSTParams{members, my_id}),

@@ -5,7 +5,8 @@ import sys
 
 input_directory = './logs/'
 num_nodes = 16
-head_ratio = 1/150
+# head_ratio = 1/150 # for 15 epochs
+head_ratio = 1/500 # for 50 epochs
 
 for i in range(num_nodes):
     if i == 0:

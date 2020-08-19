@@ -21,7 +21,7 @@
 int main(int argc, char* argv[]) {
     if(argc < 10) {
         std::cerr << "Usage: " << argv[0]
-                  << " <data_directory> <syn/mnist/rff> <sync/async> \
+                  << " <data_directory> <syn/mnist/rff> <sync/async/fully_async> \
                        <alpha> <decay> <aggregate_batch_size> <num_epochs> \
                        <num_nodes> <num_trials>"
                   << std::endl;
@@ -35,7 +35,7 @@ int main(int argc, char* argv[]) {
     std::string algorithm(argv[3]);
     const double alpha = std::stod(argv[4]);
     double decay = std::stod(argv[5]);
-    uint32_t aggregate_batch_size = std::stod(argv[6]);
+    uint32_t aggregate_batch_size = atoi(argv[6]);
     const uint32_t num_epochs = atoi(argv[7]);
     const uint32_t node_rank = 0;
     const uint32_t num_nodes = atoi(argv[8]);
@@ -79,10 +79,8 @@ int main(int argc, char* argv[]) {
 		                       data_directory + "/" + data,
 		                       (num_nodes - 1), node_rank);},
                                        alpha, gamma, decay, batch_size);
-      std::cout << "before ml_sst" << std::endl;
       sst::MLSST ml_sst(members, node_rank,
 			m_log_reg.get_model_size(), num_nodes);
-      std::cout << "after ml_sst" << std::endl;
       m_log_reg.set_model_mem(
 	      (double*)std::addressof(ml_sst.model_or_gradient[0][0]));
       for (uint row = 1; row < ml_sst.get_num_rows(); ++row) {
@@ -97,6 +95,8 @@ int main(int argc, char* argv[]) {
 	srv = new server::sync_server(m_log_reg, ml_sst, ml_stat);
       } else if(algorithm == "async") {
 	srv = new server::async_server(m_log_reg, ml_sst, ml_stat);
+      } else if(algorithm == "fully_async") {
+	srv = new server::fully_async_server(m_log_reg, ml_sst, ml_stat);
       } else {
 	std::cerr << "Wrong algorithm input: " << algorithm << std::endl;
 	exit(1);
@@ -114,7 +114,11 @@ int main(int argc, char* argv[]) {
       ml_stat.fout_log_per_epoch();
       ml_stat.fout_analysis_per_epoch();
       ml_stat.fout_gradients_per_epoch();
-      ml_stat.fout_op_time_log(true); // is_server == true
+      if (algorithm == "fully_async") {
+	ml_stat.fout_op_time_log(true, true);
+      } else {
+	ml_stat.fout_op_time_log(true, false);
+      }
       ml_stats.push_back(ml_stat);
       std::cout << "Collecting results done." << std::endl;
       ml_sst.sync_with_members(); // barrier pair with worker #5
@@ -267,5 +271,77 @@ void server::async_server::train(const size_t num_epochs) {
   }
   training = false;
   model_update_broadcast_thread.join();
+  ml_sst.sync_with_members(); // barrier pair with worker #4
+}
+
+server::fully_async_server::fully_async_server(log_reg::multinomial_log_reg& m_log_reg,
+				   sst::MLSST& ml_sst, utils::ml_stat_t& ml_stat)
+  : server(m_log_reg, ml_sst, ml_stat) {
+}
+
+server::fully_async_server::~fully_async_server() {
+  std::cout << "fully_async_server destructor does nothing." << std::endl;
+}
+
+void server::fully_async_server::train(const size_t num_epochs) {
+  std::atomic<bool> training = true;
+  std::atomic<uint64_t> last_model_round = 0;
+  auto model_update_loop =
+    [this, num_epochs, &training, &last_model_round]() mutable {
+      pthread_setname_np(pthread_self(), ("update"));
+      const uint32_t num_nodes = ml_sst.get_num_rows();
+      const size_t num_batches = m_log_reg.get_num_batches();
+      std::vector<uint64_t> last_round(num_nodes, 0);
+      while(training) {
+	for (uint row = 1; row < num_nodes; ++row) {
+	  // If new gradients arrived, update model
+	  if(last_round[row] < num_epochs * num_batches &&
+	     ml_sst.round[row] > last_round[row]) {
+	    // Counts # of lost gradients.
+	    if(ml_sst.round[row] - last_round[row] > 1) {
+	      ml_stat.num_lost_gradients_per_node[row] +=
+		ml_sst.round[row] - last_round[row] - 1;
+	    }
+	    last_round[row] = ml_sst.round[row];
+	    ml_stat.timer.set_compute_start();
+	    m_log_reg.update_model(row);
+	    ml_stat.timer.set_compute_end(FRONT_END_THREAD);
+	    ml_sst.round[0]++;
+	  }
+	}
+      }
+    };
+
+  auto model_broadcast_loop =
+    [this, &training, &last_model_round]() mutable {
+      pthread_setname_np(pthread_self(), ("broadcast"));
+      while(training) {
+	if(ml_sst.round[0] > last_model_round) {
+	  ml_stat.timer.set_push_start();
+	  ml_sst.put_with_completion();
+	  ml_stat.timer.set_push_end(BACK_END_THREAD);
+	  ml_stat.num_broadcasts++;
+	  // TODO: count the model mixing ratio here.
+	  last_model_round = ml_sst.round[0];
+	}
+      }
+    };
+  
+  std::thread model_update_thread = std::thread(model_update_loop);
+  std::thread model_broadcast_thread = std::thread(model_broadcast_loop);
+  ml_sst.sync_with_members(); // barrier pair with worker #1
+  ml_stat.timer.set_start_time();
+  for(size_t epoch_num = 0; epoch_num < num_epochs; ++epoch_num) {
+    // Between the barrier #1 above and #2 below, workers train.
+    ml_stat.timer.set_train_start();
+    ml_sst.sync_with_members(); // barrier pair with worker #2
+    ml_stat.timer.set_train_end();
+    ml_stat.set_epoch_parameters(epoch_num + 1, m_log_reg.get_model(),
+				 ml_sst);
+    ml_sst.sync_with_members(); // barrier pair with worker #3
+  }
+  training = false;
+  model_update_thread.join();
+  model_broadcast_thread.join();
   ml_sst.sync_with_members(); // barrier pair with worker #4
 }
