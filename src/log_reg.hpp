@@ -5,9 +5,10 @@
 
 #include "utils/utils.hpp"
 #include "utils/cnpy.hpp"
+#include "ml_model.hpp"
 
 namespace ml_model {
-class multinomial_log_reg {
+class multinomial_log_reg : public ml_model {
 public:
     multinomial_log_reg(const utils::reader_t& dataset_loader,
 			const double alpha, const double gamma, double decay, const size_t batch_size);

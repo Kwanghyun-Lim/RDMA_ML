@@ -15,6 +15,8 @@ add_subdirectory(utils)
 
 add_library(logistic_regression
   SHARED
+  ml_model.hpp
+  ml_model.cpp
   log_reg.hpp
   log_reg.cpp
   dnn.hpp
