@@ -10,7 +10,7 @@
 #include "utils/utils.hpp"
 #include "utils/cnpy.hpp"
 
-namespace DNN {
+namespace ml_model {
 class relu {
 public:
   relu(size_t x_len, const size_t batch_size);
@@ -108,4 +108,4 @@ private:
     std::vector<relu*> relu_layers;
     softmax* last_layer;
 };
-}  // namespace DNN
+}  // namespace ml_model

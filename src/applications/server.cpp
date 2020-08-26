@@ -19,10 +19,10 @@
 #include "utils/ml_stat.hpp"
 
 int main(int argc, char* argv[]) {
-    if(argc < 10) {
+    if(argc < 11) {
         std::cerr << "Usage: " << argv[0]
                   << " <data_directory> <syn/mnist/rff> <sync/async/fully_async> \
-                       <alpha> <decay> <aggregate_batch_size> <num_epochs> \
+                       <log_reg/dnn> <alpha> <decay> <aggregate_batch_size> <num_epochs> \
                        <num_nodes> <num_trials>"
                   << std::endl;
         return 1;
@@ -33,14 +33,18 @@ int main(int argc, char* argv[]) {
     std::string data(argv[2]);
     const double gamma = 0.0001;
     std::string algorithm(argv[3]);
-    const double alpha = std::stod(argv[4]);
-    double decay = std::stod(argv[5]);
-    uint32_t aggregate_batch_size = atoi(argv[6]);
-    const uint32_t num_epochs = atoi(argv[7]);
+    std::string ml_model_name(argv[4]);
+    const double alpha = std::stod(argv[5]);
+    double decay = std::stod(argv[6]);
+    uint32_t aggregate_batch_size = atoi(argv[7]);
+    const uint32_t num_epochs = atoi(argv[8]);
     const uint32_t node_rank = 0;
-    const uint32_t num_nodes = atoi(argv[8]);
-    const uint32_t num_trials = atoi(argv[9]);
+    const uint32_t num_nodes = atoi(argv[9]);
+    const uint32_t num_trials = atoi(argv[10]);
     const size_t batch_size = aggregate_batch_size / (num_nodes - 1);
+
+    std::cout << "ml_model_name=" << ml_model_name << std::endl;
+    std::cout << "num_trials=" << num_trials << std::endl;
 
     // Network setup
     std::map<uint32_t, std::string> ip_addrs_static;
@@ -74,7 +78,7 @@ int main(int argc, char* argv[]) {
     for(uint32_t trial_num = 0; trial_num < num_trials; ++trial_num) {
       std::cout << "trial_num " << trial_num << std::endl;
       // Initialize m_log_reg, ml_sst, ml_stat, and worker for training
-      log_reg::multinomial_log_reg m_log_reg(
+      ml_model::multinomial_log_reg m_log_reg(
 	 [&]() {return (utils::dataset)numpy::numpy_dataset(
 		                       data_directory + "/" + data,
 		                       (num_nodes - 1), node_rank);},
@@ -144,7 +148,7 @@ int main(int argc, char* argv[]) {
     }
 }
 
-server::server::server(log_reg::multinomial_log_reg& m_log_reg,
+server::server::server(ml_model::multinomial_log_reg& m_log_reg,
 				   sst::MLSST& ml_sst, utils::ml_stat_t& ml_stat)
   : m_log_reg(m_log_reg), ml_sst(ml_sst), ml_stat(ml_stat) {
 }
@@ -153,7 +157,7 @@ void server::server::train(const size_t num_epochs) {
   // virtual function
 }
 
-server::sync_server::sync_server(log_reg::multinomial_log_reg& m_log_reg,
+server::sync_server::sync_server(ml_model::multinomial_log_reg& m_log_reg,
 				   sst::MLSST& ml_sst, utils::ml_stat_t& ml_stat)
   : server(m_log_reg, ml_sst, ml_stat) {
 }
@@ -204,7 +208,7 @@ void server::sync_server::train(const size_t num_epochs) {
   ml_sst.sync_with_members(); // barrier pair with worker #4
 }
 
-server::async_server::async_server(log_reg::multinomial_log_reg& m_log_reg,
+server::async_server::async_server(ml_model::multinomial_log_reg& m_log_reg,
 				   sst::MLSST& ml_sst, utils::ml_stat_t& ml_stat)
   : server(m_log_reg, ml_sst, ml_stat) {
 }
@@ -274,7 +278,7 @@ void server::async_server::train(const size_t num_epochs) {
   ml_sst.sync_with_members(); // barrier pair with worker #4
 }
 
-server::fully_async_server::fully_async_server(log_reg::multinomial_log_reg& m_log_reg,
+server::fully_async_server::fully_async_server(ml_model::multinomial_log_reg& m_log_reg,
 				   sst::MLSST& ml_sst, utils::ml_stat_t& ml_stat)
   : server(m_log_reg, ml_sst, ml_stat) {
 }

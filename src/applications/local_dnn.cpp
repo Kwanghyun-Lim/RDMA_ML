@@ -23,7 +23,7 @@ int main(int argc, char* argv[]) {
     const std::vector<uint32_t> layer_size_vec {784, 50, 10};
     const uint32_t num_layers = 3;
     
-    DNN::deep_neural_network dnn(
+    ml_model::deep_neural_network dnn(
 	    layer_size_vec, num_layers,	     
             [&]() {
 	      return (utils::dataset)numpy::numpy_dataset(

@@ -150,7 +150,7 @@ utils::ml_stat_t::ml_stat_t(uint32_t trial_num, uint32_t num_nodes,
 	       uint32_t num_epochs, double alpha,
 	      double decay, double batch_size, const uint32_t node_rank,
               const sst::MLSST& ml_sst,
-              log_reg::multinomial_log_reg& m_log_reg)
+              ml_model::multinomial_log_reg& m_log_reg)
         : trial_num(trial_num),
           num_nodes(num_nodes),
           num_epochs(num_epochs),
@@ -207,7 +207,7 @@ void utils::ml_stat_t::set_epoch_parameters(
     }
 }
 
-void utils::ml_stat_t::collect_results(uint32_t epoch_num, log_reg::multinomial_log_reg& m_log_reg) {
+void utils::ml_stat_t::collect_results(uint32_t epoch_num, ml_model::multinomial_log_reg& m_log_reg) {
     m_log_reg.set_model_mem(intermediate_models[epoch_num]);
     training_error[epoch_num] = m_log_reg.training_error();
     test_error[epoch_num] = m_log_reg.test_error();

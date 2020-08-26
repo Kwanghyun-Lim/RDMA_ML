@@ -6,7 +6,7 @@
 #include "utils/utils.hpp"
 #include "utils/cnpy.hpp"
 
-namespace log_reg {
+namespace ml_model {
 class multinomial_log_reg {
 public:
     multinomial_log_reg(const utils::reader_t& dataset_loader,
@@ -68,4 +68,4 @@ private:
     // temporary space for predicted labels
     std::unique_ptr<double[]> predicted_labels;
 };
-}  // namespace log_reg
+}  // namespace ml_model
