@@ -32,6 +32,10 @@ void ml_model::ml_model::compute_gradient(const size_t batch_num, double* given_
   std::cerr << "BUG: compute_gradient() is called." << std::endl;
 }
 
+void ml_model::ml_model::train(const size_t num_epochs) {
+  std::cerr << "BUG: train() is called." << std::endl;
+}
+
 double ml_model::ml_model::training_error() {
   std::cerr << "BUG: training_error() is called." << std::endl;
   return -1.0;

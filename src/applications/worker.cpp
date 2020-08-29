@@ -83,7 +83,7 @@ int main(int argc, char* argv[]) {
          ml_model = new ml_model::multinomial_log_reg(
      	     [&]() {return (utils::dataset)numpy::numpy_dataset(
 		                       data_directory + "/" + data,
-		                       (num_nodes - 1), node_rank);},
+		                       (num_nodes - 1), node_rank - 1);},
                                        alpha, gamma, decay, batch_size);
       } else if (ml_model_name == "dnn") {
 	// TODO

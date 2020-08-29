@@ -13,6 +13,7 @@ public:
   virtual double* get_model() const;
   virtual void compute_gradient(const size_t batch_num, double* given_model);
 
+  virtual void train(const size_t num_epochs);
   virtual double training_error();
   virtual double training_loss();
   virtual double get_loss_opt() const;
