@@ -150,7 +150,7 @@ utils::ml_stat_t::ml_stat_t(uint32_t trial_num, uint32_t num_nodes,
 	       uint32_t num_epochs, double alpha,
 	      double decay, double batch_size, const uint32_t node_rank,
               const sst::MLSST& ml_sst,
-              ml_model::multinomial_log_reg& m_log_reg)
+              ml_model::ml_model* ml_model)
         : trial_num(trial_num),
           num_nodes(num_nodes),
           num_epochs(num_epochs),
@@ -158,7 +158,7 @@ utils::ml_stat_t::ml_stat_t(uint32_t trial_num, uint32_t num_nodes,
           decay(decay),
           batch_size(batch_size),
 	  node_rank(node_rank),
-          model_size(m_log_reg.get_model_size()),
+          model_size(ml_model->get_model_size()),
           intermediate_models(num_epochs + 1),
           cumulative_num_broadcasts(num_epochs + 1, 0),
           num_model_updates(num_epochs + 1, 0),
@@ -181,7 +181,7 @@ utils::ml_stat_t::ml_stat_t(uint32_t trial_num, uint32_t num_nodes,
         }
     }
 
-    set_epoch_parameters(0, m_log_reg.get_model(), ml_sst);
+    set_epoch_parameters(0, ml_model->get_model(), ml_sst);
 }
 
 void utils::ml_stat_t::set_epoch_parameters(
@@ -207,13 +207,13 @@ void utils::ml_stat_t::set_epoch_parameters(
     }
 }
 
-void utils::ml_stat_t::collect_results(uint32_t epoch_num, ml_model::multinomial_log_reg& m_log_reg) {
-    m_log_reg.set_model_mem(intermediate_models[epoch_num]);
-    training_error[epoch_num] = m_log_reg.training_error();
-    test_error[epoch_num] = m_log_reg.test_error();
-    loss_gap[epoch_num] = m_log_reg.training_loss() - m_log_reg.get_loss_opt();
-    dist_to_opt[epoch_num] = m_log_reg.distance_to_optimum();
-    grad_norm[epoch_num] = m_log_reg.gradient_norm();
+void utils::ml_stat_t::collect_results(uint32_t epoch_num, ml_model::ml_model* ml_model) {
+    ml_model->set_model_mem(intermediate_models[epoch_num]);
+    training_error[epoch_num] = ml_model->training_error();
+    test_error[epoch_num] = ml_model->test_error();
+    loss_gap[epoch_num] = ml_model->training_loss() - ml_model->get_loss_opt();
+    dist_to_opt[epoch_num] = ml_model->distance_to_optimum();
+    grad_norm[epoch_num] = ml_model->gradient_norm();
 }
 
 void utils::ml_stat_t::print_results() {

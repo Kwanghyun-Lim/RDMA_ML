@@ -46,10 +46,10 @@ public:
 	       uint32_t num_epochs, double alpha,
 	      double decay, double batch_size, const uint32_t node_rank,
               const sst::MLSST& ml_sst,
-              ml_model::multinomial_log_reg& m_log_reg);
+              ml_model::ml_model* ml_model);
 
     void set_epoch_parameters(uint32_t epoch_num, double* model, const sst::MLSST& ml_sst);
-    void collect_results(uint32_t epoch_num, ml_model::multinomial_log_reg& m_log_reg);
+    void collect_results(uint32_t epoch_num, ml_model::ml_model* ml_model);
     void print_results();
     void fout_log_per_epoch();
     void fout_analysis_per_epoch();

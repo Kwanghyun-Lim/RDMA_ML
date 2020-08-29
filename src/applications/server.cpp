@@ -43,9 +43,6 @@ int main(int argc, char* argv[]) {
     const uint32_t num_trials = atoi(argv[10]);
     const size_t batch_size = aggregate_batch_size / (num_nodes - 1);
 
-    std::cout << "ml_model_name=" << ml_model_name << std::endl;
-    std::cout << "num_trials=" << num_trials << std::endl;
-
     // Network setup
     std::map<uint32_t, std::string> ip_addrs_static;
     ip_addrs_static[0] = "192.168.99.16";
@@ -77,30 +74,40 @@ int main(int argc, char* argv[]) {
     utils::ml_stats_t ml_stats(num_nodes, num_epochs);
     for(uint32_t trial_num = 0; trial_num < num_trials; ++trial_num) {
       std::cout << "trial_num " << trial_num << std::endl;
-      // Initialize m_log_reg, ml_sst, ml_stat, and worker for training
-      ml_model::multinomial_log_reg m_log_reg(
-	 [&]() {return (utils::dataset)numpy::numpy_dataset(
+      // Initialize ml_model, ml_sst, ml_stat, and worker for training
+      ml_model::ml_model* ml_model;
+      if (ml_model_name == "log_reg") {
+	std::cout << "ml_model_name=" << ml_model_name << std::endl;
+         ml_model = new ml_model::multinomial_log_reg(
+     	     [&]() {return (utils::dataset)numpy::numpy_dataset(
 		                       data_directory + "/" + data,
 		                       (num_nodes - 1), node_rank);},
                                        alpha, gamma, decay, batch_size);
+      } else if (ml_model_name == "dnn") {
+	// TODO
+      } else {
+	std::cerr << "Wrong algorithm input: " << algorithm << std::endl;
+	exit(1);
+      }
+      
       sst::MLSST ml_sst(members, node_rank,
-			m_log_reg.get_model_size(), num_nodes);
-      m_log_reg.set_model_mem(
+			ml_model->get_model_size(), num_nodes);
+      ml_model->set_model_mem(
 	      (double*)std::addressof(ml_sst.model_or_gradient[0][0]));
       for (uint row = 1; row < ml_sst.get_num_rows(); ++row) {
-	m_log_reg.push_back_to_grad_vec(
+	ml_model->push_back_to_grad_vec(
 	      (double*)std::addressof(ml_sst.model_or_gradient[row][0]));
       }
       utils::ml_stat_t ml_stat(trial_num, num_nodes, num_epochs,
 			       alpha, decay, batch_size, node_rank,
-			       ml_sst, m_log_reg);
+			       ml_sst, ml_model);
       server::server* srv;
       if(algorithm == "sync") {
-	srv = new server::sync_server(m_log_reg, ml_sst, ml_stat);
+	srv = new server::sync_server(ml_model, ml_sst, ml_stat);
       } else if(algorithm == "async") {
-	srv = new server::async_server(m_log_reg, ml_sst, ml_stat);
+	srv = new server::async_server(ml_model, ml_sst, ml_stat);
       } else if(algorithm == "fully_async") {
-	srv = new server::fully_async_server(m_log_reg, ml_sst, ml_stat);
+	srv = new server::fully_async_server(ml_model, ml_sst, ml_stat);
       } else {
 	std::cerr << "Wrong algorithm input: " << algorithm << std::endl;
 	exit(1);
@@ -112,7 +119,7 @@ int main(int argc, char* argv[]) {
       std::cout << "trial_num " << trial_num << " done." << std::endl;
       std::cout << "Collecting results..." << std::endl;
       for(size_t epoch_num = 0; epoch_num < num_epochs + 1; ++epoch_num) {
-	ml_stat.collect_results(epoch_num, m_log_reg);
+	ml_stat.collect_results(epoch_num, ml_model);
       }
       ml_stat.print_results();
       ml_stat.fout_log_per_epoch();
@@ -148,18 +155,18 @@ int main(int argc, char* argv[]) {
     }
 }
 
-server::server::server(ml_model::multinomial_log_reg& m_log_reg,
+server::server::server(ml_model::ml_model* ml_model,
 				   sst::MLSST& ml_sst, utils::ml_stat_t& ml_stat)
-  : m_log_reg(m_log_reg), ml_sst(ml_sst), ml_stat(ml_stat) {
+  : ml_model(ml_model), ml_sst(ml_sst), ml_stat(ml_stat) {
 }
 
 void server::server::train(const size_t num_epochs) {
   // virtual function
 }
 
-server::sync_server::sync_server(ml_model::multinomial_log_reg& m_log_reg,
+server::sync_server::sync_server(ml_model::ml_model* ml_model,
 				   sst::MLSST& ml_sst, utils::ml_stat_t& ml_stat)
-  : server(m_log_reg, ml_sst, ml_stat) {
+  : server(ml_model, ml_sst, ml_stat) {
 }
 
 server::sync_server::~sync_server() {
@@ -170,7 +177,7 @@ void server::sync_server::train(const size_t num_epochs) {
   ml_sst.sync_with_members(); // barrier pair with server #1
   ml_stat.timer.set_start_time();
   const uint32_t num_nodes = ml_sst.get_num_rows();
-  const size_t num_batches = m_log_reg.get_num_batches();
+  const size_t num_batches = ml_model->get_num_batches();
   std::vector<bool> done(num_nodes, false);
   std::vector<uint32_t> receivers;
   for (int i = 1; i < num_nodes; ++i) {
@@ -186,7 +193,7 @@ void server::sync_server::train(const size_t num_epochs) {
 	for(uint32_t row = 1; row < num_nodes; ++row) {
 	  if(!done[row] && ml_sst.round[row] > ml_sst.round[0]) {
 	    ml_stat.timer.set_compute_start();
-	    m_log_reg.update_model(row);
+	    ml_model->update_model(row);
 	    ml_stat.timer.set_compute_end();
 	    done[row] = true;
 	    num_done++;
@@ -201,16 +208,16 @@ void server::sync_server::train(const size_t num_epochs) {
     }
     ml_stat.timer.set_train_end();
     ml_sst.sync_with_members(); // barrier pair with worker #2
-    ml_stat.set_epoch_parameters(epoch_num + 1, m_log_reg.get_model(),
+    ml_stat.set_epoch_parameters(epoch_num + 1, ml_model->get_model(),
 				 ml_sst);
     ml_sst.sync_with_members(); // barrier pair with worker #3
   }
   ml_sst.sync_with_members(); // barrier pair with worker #4
 }
 
-server::async_server::async_server(ml_model::multinomial_log_reg& m_log_reg,
+server::async_server::async_server(ml_model::ml_model* ml_model,
 				   sst::MLSST& ml_sst, utils::ml_stat_t& ml_stat)
-  : server(m_log_reg, ml_sst, ml_stat) {
+  : server(ml_model, ml_sst, ml_stat) {
 }
 
 server::async_server::~async_server() {
@@ -223,7 +230,7 @@ void server::async_server::train(const size_t num_epochs) {
     [this, num_epochs, &training]() mutable {
       pthread_setname_np(pthread_self(), ("update"));
       const uint32_t num_nodes = ml_sst.get_num_rows();
-      const size_t num_batches = m_log_reg.get_num_batches();
+      const size_t num_batches = ml_model->get_num_batches();
       std::vector<uint32_t> receivers;
       while(training) {
 	for (uint row = 1; row < num_nodes; ++row) {
@@ -238,7 +245,7 @@ void server::async_server::train(const size_t num_epochs) {
 	    }
 	    ml_sst.last_round[0][row] = ml_sst.round[row];
 	    ml_stat.timer.set_compute_start();
-	    m_log_reg.update_model(row);
+	    ml_model->update_model(row);
 	    ml_stat.timer.set_compute_end();
 	    receivers.push_back(row);
 	    ml_sst.round[0]++;
@@ -269,7 +276,7 @@ void server::async_server::train(const size_t num_epochs) {
     ml_stat.timer.set_train_start();
     ml_sst.sync_with_members(); // barrier pair with worker #2
     ml_stat.timer.set_train_end();
-    ml_stat.set_epoch_parameters(epoch_num + 1, m_log_reg.get_model(),
+    ml_stat.set_epoch_parameters(epoch_num + 1, ml_model->get_model(),
 				 ml_sst);
     ml_sst.sync_with_members(); // barrier pair with worker #3
   }
@@ -278,9 +285,9 @@ void server::async_server::train(const size_t num_epochs) {
   ml_sst.sync_with_members(); // barrier pair with worker #4
 }
 
-server::fully_async_server::fully_async_server(ml_model::multinomial_log_reg& m_log_reg,
+server::fully_async_server::fully_async_server(ml_model::ml_model* ml_model,
 				   sst::MLSST& ml_sst, utils::ml_stat_t& ml_stat)
-  : server(m_log_reg, ml_sst, ml_stat) {
+  : server(ml_model, ml_sst, ml_stat) {
 }
 
 server::fully_async_server::~fully_async_server() {
@@ -294,7 +301,7 @@ void server::fully_async_server::train(const size_t num_epochs) {
     [this, num_epochs, &training, &last_model_round]() mutable {
       pthread_setname_np(pthread_self(), ("update"));
       const uint32_t num_nodes = ml_sst.get_num_rows();
-      const size_t num_batches = m_log_reg.get_num_batches();
+      const size_t num_batches = ml_model->get_num_batches();
       std::vector<uint64_t> last_round(num_nodes, 0);
       while(training) {
 	for (uint row = 1; row < num_nodes; ++row) {
@@ -308,7 +315,7 @@ void server::fully_async_server::train(const size_t num_epochs) {
 	    }
 	    last_round[row] = ml_sst.round[row];
 	    ml_stat.timer.set_compute_start();
-	    m_log_reg.update_model(row);
+	    ml_model->update_model(row);
 	    ml_stat.timer.set_compute_end(FRONT_END_THREAD);
 	    ml_sst.round[0]++;
 	  }
@@ -340,7 +347,7 @@ void server::fully_async_server::train(const size_t num_epochs) {
     ml_stat.timer.set_train_start();
     ml_sst.sync_with_members(); // barrier pair with worker #2
     ml_stat.timer.set_train_end();
-    ml_stat.set_epoch_parameters(epoch_num + 1, m_log_reg.get_model(),
+    ml_stat.set_epoch_parameters(epoch_num + 1, ml_model->get_model(),
 				 ml_sst);
     ml_sst.sync_with_members(); // barrier pair with worker #3
   }

@@ -12,7 +12,7 @@ class multinomial_log_reg : public ml_model {
 public:
     multinomial_log_reg(const utils::reader_t& dataset_loader,
 			const double alpha, const double gamma, double decay, const size_t batch_size);
-
+    ~multinomial_log_reg();
     void train(const size_t num_epochs);
  
     double training_error();

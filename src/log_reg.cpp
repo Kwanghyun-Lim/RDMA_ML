@@ -26,6 +26,11 @@ ml_model::multinomial_log_reg::multinomial_log_reg(
 	  num_model_updates(0),
           predicted_labels(std::make_unique<double[]>(
 		           dataset.training_labels.num_classes * batch_size)) {
+  std::cout << "m_log_reg constructed" << std::endl;
+}
+
+ml_model::multinomial_log_reg::~multinomial_log_reg() {
+  std::cout << "m_log_reg destructor called." << std::endl;
 }
 
 void ml_model::multinomial_log_reg::train(const size_t num_epochs) {
