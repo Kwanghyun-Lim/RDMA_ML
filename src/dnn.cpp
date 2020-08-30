@@ -78,9 +78,6 @@ double* ml_model::affine::backward(double* dL_dY) {
   utils::matrix_t _dL_dY(dL_dY, batch_size, W_col_len);
   utils::matrix_t _dL_dW(dL_dW, W_row_len, W_col_len);
   utils::mat_mul(_X, Trans, _dL_dY, NoTrans, _dL_dW);
-  // std::cout << "[affine_backward] _dL_dW=";
-  // _dL_dW.print();
-  // std::cout << std::endl;
   
   utils::matrix_t _dL_db(dL_db, 1, b_len);
   utils::zero_arr(dL_db, b_len);
@@ -88,9 +85,6 @@ double* ml_model::affine::backward(double* dL_dY) {
     submat_add_assign(1.0, _dL_db, 0, 0, _dL_db.num_rows, _dL_db.num_cols,
 		      1.0, _dL_dY, i, 0, 1, _dL_dY.num_cols);
   }
-  // std::cout << "[affine_backward] _dL_db=";
-  // _dL_db.print();
-  // std::cout << std::endl;
   
   utils::matrix_t _W(W, W_row_len, W_col_len);
   utils::matrix_t _dL_dX(dL_dX, batch_size, W_row_len);
@@ -105,9 +99,6 @@ double* ml_model::affine::backward(double* dL_dY, const size_t batch_num, const 
   utils::matrix_t _dL_dY(dL_dY, batch_size, W_col_len);
   utils::matrix_t _dL_dW(dL_dW, W_row_len, W_col_len);
   utils::submat_mul(_X, 0, batch_num * batch_size, _X.num_rows, batch_size, NoTrans, _dL_dY, 0, 0, _dL_dY.num_rows, _dL_dY.num_cols, NoTrans, _dL_dW);
-  // std::cout << "[1affine_backward] _dL_dW=";
-  // _dL_dW.print();
-  // std::cout << std::endl;
   
   utils::matrix_t _dL_db(dL_db, 1, b_len);
   utils::zero_arr(dL_db, b_len);
@@ -115,9 +106,6 @@ double* ml_model::affine::backward(double* dL_dY, const size_t batch_num, const 
     submat_add_assign(1.0, _dL_db, 0, 0, _dL_db.num_rows, _dL_db.num_cols,
 		      1.0, _dL_dY, i, 0, 1, _dL_dY.num_cols);
   }
-  // std::cout << "[1affine_backward] _dL_db=";
-  // _dL_db.print();
-  // std::cout << std::endl;
 
   utils::matrix_t _W(W, W_row_len, W_col_len);
   utils::matrix_t _dL_dX(dL_dX, batch_size, W_row_len);
@@ -138,33 +126,16 @@ double* ml_model::softmax::forward(double* X) {
 
 double* ml_model::softmax::backward(double* Y_labels, const size_t batch_num, const size_t total_num_data) {
   utils::matrix_t _Y_labels(Y_labels, y_len, total_num_data);
-  // std::cout << "_Y_labels=";
-  // _Y_labels.print();
-  // std::cout << std::endl;
-  
   utils::matrix_t _dL_dX(dL_dX, batch_size, y_len);
-  // std::cout << "_dL_dX(before trans overwriting)=";
-  // _dL_dX.print();
-  // std::cout << std::endl;
-  
   utils::submat_trans(_Y_labels, 0, batch_num * batch_size, y_len, batch_size, _dL_dX);
   
-  // std::cout << "_dL_dX=";
-  // _dL_dX.print();
-  // std::cout << std::endl;
-  
   utils::matrix_t _Y(Y, batch_size, y_len);
-  // std::cout << "_Y=";
-  // _Y.print();
-  // std::cout << std::endl;
-
   utils::mat_add_assign(-1/(float)batch_size, _dL_dX, 1/(float)batch_size, _Y);
-  
   return dL_dX;
 }
 
 ml_model::deep_neural_network::deep_neural_network(
-	const std::vector<uint32_t>& layer_size_vec,
+	const std::vector<uint32_t> layer_size_vec,
 	const uint32_t num_layers,
         const utils::reader_t& dataset_loader,
         const double alpha,
@@ -202,7 +173,6 @@ void ml_model::deep_neural_network::train(const size_t num_epochs) {
       update_model();
     }
   }
-  std::cout << "[train] train done " << std::endl;
 }
 
 double ml_model::deep_neural_network::training_error() {
@@ -220,59 +190,49 @@ double ml_model::deep_neural_network::test_error() {
 void ml_model::deep_neural_network::compute_gradient(const size_t batch_num) {
     const utils::images_t& images = dataset.training_images;
     const utils::labels_t& labels = dataset.training_labels;
-    
+
     // feed forward
     double* Y =	affine_layers[0]->forward(images.arr.get(), batch_num, images.num_total_images);
     utils::matrix_t affine_Y(Y, affine_layers[0]->batch_size, affine_layers[0]->W_col_len);
-    // std::cout << "norm of first affine= " << utils::mat_norm(affine_Y) << std::endl;
     
     for (size_t i = 1; i < num_layers - 1; ++i) {
       Y = relu_layers[i-1]->forward(Y);
       utils::matrix_t relu_Y(Y, relu_layers[i-1]->batch_size, relu_layers[i-1]->x_len);
-      // std::cout << "norm of relu_Y= " << utils::mat_norm(relu_Y) << std::endl;
       
       Y = affine_layers[i]->forward(Y);
       utils::matrix_t affine_Y2(Y, affine_layers[i]->batch_size, affine_layers[i]->W_col_len);
-      // std::cout << "norm of affine= " << utils::mat_norm(affine_Y2) << std::endl;
     }
     
     Y = last_layer->forward(Y);
     utils::matrix_t softmax_Y(Y, last_layer->batch_size, last_layer->y_len);
-    // std::cout << "norm of softmax= " << utils::mat_norm(softmax_Y) << std::endl;
 
     // back propagation
     double* dL_dX = last_layer->backward(labels.arr.get(), batch_num, images.num_total_images);
     utils::matrix_t softmax_dL_dX(dL_dX, last_layer->batch_size, last_layer->y_len);
-    // std::cout << "norm of softmax dL_dX= " << utils::mat_norm(softmax_dL_dX) << std::endl;
-    // std::cout << "dL_dX= ";
-    // softmax_dL_dX.print();
     
     for (size_t i = num_layers - 2; i > 0; --i) {
 	dL_dX = affine_layers[i]->backward(dL_dX);
 	utils::matrix_t affine_dL_dX(dL_dX, affine_layers[i]->batch_size, affine_layers[i]->W_row_len);
-	// std::cout << "norm of affine dL_dX= " << utils::mat_norm(affine_dL_dX) << std::endl;
 	
 	dL_dX = relu_layers[i-1]->backward(dL_dX);
 	utils::matrix_t relu_dL_dX(dL_dX, relu_layers[i-1]->batch_size, relu_layers[i-1]->x_len);
-	// std::cout << "norm of relu dL_dX= " << utils::mat_norm(relu_dL_dX) << std::endl;
     }
     
     dL_dX = affine_layers[0]->backward(dL_dX, batch_num, images.num_total_images);
     utils::matrix_t affine_dL_dX(dL_dX, affine_layers[0]->batch_size, affine_layers[0]->W_row_len);
-    // std::cout << "norm of first affine dL_dX= " << utils::mat_norm(affine_dL_dX) << std::endl;
     
 }
 
 void ml_model::deep_neural_network::update_model() {
-  utils::matrix_t _gradient(gradient, 1, model_size);
+  utils::matrix_t _gradient(gradients[0], 1, model_size);
   utils::matrix_t _model(model, 1, model_size);
-  cblas_daxpy(model_size, -alpha, gradient, 1, model, 1);
-  // std::cout << "norm of gradient =" << utils::mat_norm(_gradient) << std::endl;
-  // std::cout << "gradient=";
-  // _gradient.print();
-  // std::cout << "norm of model =" << utils::mat_norm(_model) << std::endl;
-  // std::cout << "model=";
-  // _model.print();
+  cblas_daxpy(model_size, -alpha, gradients[0], 1, model, 1);
+}
+
+void ml_model::deep_neural_network::update_model(uint ml_sst_row) {
+  utils::matrix_t _gradient(gradients[ml_sst_row-1], 1, model_size);
+  utils::matrix_t _model(model, 1, model_size);
+  cblas_daxpy(model_size, -alpha, gradients[ml_sst_row-1], 1, model, 1);
 }
 
 void ml_model::deep_neural_network::set_model_mem(double* model) {
@@ -310,8 +270,32 @@ void ml_model::deep_neural_network::set_gradient_mem(double* gradient) {
     }
 }
 
+void ml_model::deep_neural_network::push_back_to_grad_vec(double* gradient) {
+  assert (model != NULL);
+  gradients.push_back(gradient);
+  double* gradient_seek = gradient;
+  if (is_worker) {
+    for (int i = 0; i < num_layers - 1; ++i) {
+      size_t W_b_size
+	= affine_layers[i]->W_row_len * affine_layers[i]->W_col_len + affine_layers[i]->b_len;
+
+      affine_layers[i]->dL_dW = gradient_seek;
+      affine_layers[i]->dL_db = gradient_seek + W_b_size - affine_layers[i]->b_len;
+      gradient_seek += W_b_size;
+    }
+  }
+}
+
+double* ml_model::deep_neural_network::get_model() const {
+  return model;
+}
+
 size_t ml_model::deep_neural_network::get_model_size() const {
     return model_size;
+}
+
+size_t ml_model::deep_neural_network::get_num_batches() const {
+    return dataset.training_images.num_part_images / batch_size;
 }
 
 size_t ml_model::deep_neural_network::get_num_batches(const utils::images_t& images) const {

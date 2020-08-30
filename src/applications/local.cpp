@@ -26,25 +26,46 @@ int main(int argc, char* argv[]) {
     const uint32_t num_epochs = atoi(argv[7]);
     
     ml_model::ml_model* ml_model;
-    ml_model = new ml_model::multinomial_log_reg(
+    if (ml_model_name == "log_reg") {
+        ml_model = new ml_model::multinomial_log_reg(
      	     [&]() {return (utils::dataset)numpy::numpy_dataset(
 		                       data_directory + "/" + data,
 		                       1, 0);},
                                        alpha, gamma, decay, batch_size);
+    } else if (ml_model_name == "dnn") {
+        const std::vector<uint32_t> layer_size_vec {784, 50, 10};
+        const uint32_t num_layers = 3;
+        ml_model = new ml_model::deep_neural_network(
+	    layer_size_vec, num_layers,	     
+            [&]() {return (utils::dataset)numpy::numpy_dataset(
+		                       data_directory + "/" + data,
+		                       1, 0);},
+                                       alpha, batch_size, true);
+    } else {
+      	std::cerr << "Wrong ml_model_name input: " << ml_model_name << std::endl;
+	exit(1);
+    }
 
     double* model = new double[ml_model->get_model_size()]; // ml_sst first row
+    if (ml_model_name == "log_reg") {
+      utils::zero_arr(model, ml_model->get_model_size());
+    } else if (ml_model_name == "dnn") {
+      std::string model_full_path = data_directory + "/" + data + "/model_784-50-10.npy";
+      ml_model->init_model(model, model_full_path);
+    } else {
+      	std::cerr << "Wrong ml_model_name input: " << ml_model_name << std::endl;
+	exit(1);
+    }
+    
     double* gradient = new double[ml_model->get_model_size()]; // ml_sst my own row
-    utils::zero_arr(model, ml_model->get_model_size());
     utils::zero_arr(gradient, ml_model->get_model_size());
     
-    std::cout << "[main] gradient " << gradient << std::endl;
     ml_model->set_model_mem(model);
     ml_model->push_back_to_grad_vec(gradient);
     
     struct timespec start_time, end_time;
     clock_gettime(CLOCK_REALTIME, &start_time);
     ml_model->train(num_epochs);
-    std::cout << "[main] train done " << std::endl;
     clock_gettime(CLOCK_REALTIME, &end_time);
     const double time_taken = (double)(end_time.tv_sec - start_time.tv_sec)
                          + (end_time.tv_nsec - start_time.tv_nsec) / 1e9;

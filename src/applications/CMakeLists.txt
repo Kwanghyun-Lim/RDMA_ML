@@ -1,5 +1,11 @@
 cmake_minimum_required(VERSION 3.0)
 
+add_executable(local local.cpp)
+target_include_directories(local
+  PUBLIC
+  ${logistic_regression_SOURCE_DIR})
+target_link_libraries(local logistic_regression utils)
+
 add_executable(local_log_reg local_log_reg.cpp)
 target_include_directories(local_log_reg
   PUBLIC

@@ -37,7 +37,7 @@ void ml_model::multinomial_log_reg::train(const size_t num_epochs) {
     const size_t num_batches = get_num_batches();
     for (size_t epoch_num = 0; epoch_num < num_epochs; ++epoch_num) {
         for (size_t batch_num = 0; batch_num < num_batches; ++batch_num) {
-	    compute_gradient(batch_num, model);
+	    compute_gradient(batch_num);
 	    update_model();
         }
     }
@@ -96,6 +96,10 @@ void ml_model::multinomial_log_reg::compute_gradient(size_t batch_num, double* g
 			      batch_size, images.num_total_images,
 			      1/(double)batch_size, 0);
     cblas_daxpy(model_size, gamma, given_model, 1, gradient_ptr, 1);
+}
+
+void ml_model::multinomial_log_reg::compute_gradient(size_t batch_num) {
+  compute_gradient(batch_num, model);
 }
 
 void ml_model::multinomial_log_reg::compute_full_gradient(double* given_model) {
@@ -157,6 +161,10 @@ size_t ml_model::multinomial_log_reg::get_model_size() const {
 
 size_t ml_model::multinomial_log_reg::get_num_batches() const {
     return dataset.training_images.num_part_images / batch_size;
+}
+
+size_t ml_model::multinomial_log_reg::get_num_batches(const utils::images_t& images) const {
+    return images.num_total_images / batch_size;
 }
 
 size_t ml_model::multinomial_log_reg::get_num_part_images() const {

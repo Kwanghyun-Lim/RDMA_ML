@@ -19,6 +19,16 @@ size_t ml_model::ml_model::get_num_batches() const {
   std::cerr << "BUG: virtual function get_num_batches() is called." << std::endl;
   return -1;
 }
+
+size_t ml_model::ml_model::get_num_batches(const utils::images_t& images) const {
+  std::cerr << "BUG: virtual function get_num_batches() is called." << std::endl;
+  return -1;
+}
+
+void ml_model::ml_model::update_model() {
+  std::cerr << "BUG: virtual function update_model() is called." << std::endl;
+}
+
 void ml_model::ml_model::update_model(uint ml_sst_row) {
   std::cerr << "BUG: virtual function update_model() is called." << std::endl;
 }
@@ -28,7 +38,7 @@ double* ml_model::ml_model::get_model() const {
   return NULL;
 }
 
-void ml_model::ml_model::compute_gradient(const size_t batch_num, double* given_model) {
+void ml_model::ml_model::compute_gradient(const size_t batch_num) {
   std::cerr << "BUG: compute_gradient() is called." << std::endl;
 }
 
@@ -64,5 +74,9 @@ double ml_model::ml_model::gradient_norm() {
 double ml_model::ml_model::distance_to_optimum() {
   std::cerr << "BUG: distance_t_optimum() is called." << std::endl;
   return -1.0;
+}
+
+void ml_model::ml_model::init_model(double* model, std::string full_path) {
+  std::cerr << "BUG: init_model() is called." << std::endl;
 }
 

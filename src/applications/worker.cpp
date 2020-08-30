@@ -109,7 +109,7 @@ int main(int argc, char* argv[]) {
       } else if(algorithm == "fully_async") {
 	wrk = new worker::fully_async_worker(ml_model, ml_sst, ml_stat, node_rank);
       } else {
-	std::cerr << "Wrong algorithm input: " << algorithm << std::endl;
+	std::cerr << "Wrong ml_model_name input: " << ml_model_name << std::endl;
 	exit(1);
       }
 
@@ -168,7 +168,7 @@ void worker::sync_worker::train(const size_t num_epochs) {
       ml_stat.timer.set_wait_end();
       
       ml_stat.timer.set_compute_start();
-      ml_model->compute_gradient(batch_num, ml_model->get_model());
+      ml_model->compute_gradient(batch_num);
       ml_stat.timer.set_compute_end();
       ml_sst.round[1]++;
       
@@ -209,7 +209,7 @@ void worker::async_worker::train(const size_t num_epochs) {
       ml_stat.timer.set_wait_end();
 
       ml_stat.timer.set_compute_start();
-      ml_model->compute_gradient(batch_num, ml_model->get_model());
+      ml_model->compute_gradient(batch_num);
       ml_stat.timer.set_compute_end();
 
       ml_sst.round[1]++;
@@ -245,7 +245,7 @@ void worker::fully_async_worker::train(const size_t num_epochs) {
     for(size_t batch_num = 0; batch_num < num_batches; ++batch_num) {
 
       ml_stat.timer.set_compute_start();
-      ml_model->compute_gradient(batch_num, ml_model->get_model());
+      ml_model->compute_gradient(batch_num);
       ml_stat.timer.set_compute_end(FRONT_END_THREAD);
 
       last_model_round = ml_sst.round[0];

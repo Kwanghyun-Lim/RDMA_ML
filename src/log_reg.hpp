@@ -23,9 +23,10 @@ public:
     double distance_to_optimum();
   
     void compute_gradient(const size_t batch_num, double* given_model);
+    void compute_gradient(const size_t batch_num);
     void compute_full_gradient(double* given_model);
-    void update_model(uint ml_sst_row);
     void update_model();
+    void update_model(uint ml_sst_row);
     double decay_alpha();
     void update_gradient(const size_t batch_num);
     void copy_model(double* src, double* dst, size_t len);
@@ -43,6 +44,7 @@ public:
     size_t get_model_size() const;
 
     size_t get_num_batches() const;
+    size_t get_num_batches(const utils::images_t& images) const;
     size_t get_num_part_images() const;
     size_t get_num_total_images() const;
 

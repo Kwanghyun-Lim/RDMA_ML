@@ -40,16 +40,6 @@ int main(int argc, char* argv[]) {
     std::string model_full_path
       = data_directory + "/" + data + "/model_784-50-10.npy";
     dnn.init_model(model, model_full_path);
-    // for (size_t i = 0; i < dnn.get_model_size(); i++) {
-    //   if(model[i] != 0)
-    // 	std::cout << model[i] << " ";
-    // }
-    
-    std::cout << "W0 =" << std::endl;
-    // for (size_t i = 0; i < dnn.get_model_size(); i++) {
-    //   if(model[i] != 0)
-    // 	std::cout << model[i] << " ";
-    // }
     
     std::cout << "[main] gradient " << gradient << std::endl;
     dnn.set_model_mem(model);

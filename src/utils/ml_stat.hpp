@@ -5,6 +5,7 @@
 #include <atomic>
 #include <chrono>
 #include <queue>
+#include <string>
 
 #define FRONT_END_THREAD 0
 #define BACK_END_THREAD 1
@@ -49,7 +50,7 @@ public:
               ml_model::ml_model* ml_model);
 
     void set_epoch_parameters(uint32_t epoch_num, double* model, const sst::MLSST& ml_sst);
-    void collect_results(uint32_t epoch_num, ml_model::ml_model* ml_model);
+    void collect_results(uint32_t epoch_num, ml_model::ml_model* ml_model, std::string ml_model_name);
     void print_results();
     void fout_log_per_epoch();
     void fout_analysis_per_epoch();

@@ -207,13 +207,23 @@ void utils::ml_stat_t::set_epoch_parameters(
     }
 }
 
-void utils::ml_stat_t::collect_results(uint32_t epoch_num, ml_model::ml_model* ml_model) {
+void utils::ml_stat_t::collect_results(uint32_t epoch_num, ml_model::ml_model* ml_model, std::string ml_model_name) {
     ml_model->set_model_mem(intermediate_models[epoch_num]);
     training_error[epoch_num] = ml_model->training_error();
     test_error[epoch_num] = ml_model->test_error();
-    loss_gap[epoch_num] = ml_model->training_loss() - ml_model->get_loss_opt();
-    dist_to_opt[epoch_num] = ml_model->distance_to_optimum();
-    grad_norm[epoch_num] = ml_model->gradient_norm();
+    
+    if (ml_model_name == "log_reg") {
+      loss_gap[epoch_num] = ml_model->training_loss() - ml_model->get_loss_opt();
+      dist_to_opt[epoch_num] = ml_model->distance_to_optimum();
+      grad_norm[epoch_num] = ml_model->gradient_norm();
+    } else if (ml_model_name == "dnn") {
+      loss_gap[epoch_num] = 0;
+      dist_to_opt[epoch_num] = 0;
+      grad_norm[epoch_num] = 0;
+    } else {
+      std::cerr << "BUG: WRONG INPUT:" << ml_model_name << std::endl;
+      exit(1);
+    }
 }
 
 void utils::ml_stat_t::print_results() {

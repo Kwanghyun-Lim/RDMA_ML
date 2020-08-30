@@ -86,7 +86,7 @@ int main(int argc, char* argv[]) {
       } else if (ml_model_name == "dnn") {
 	// TODO
       } else {
-	std::cerr << "Wrong algorithm input: " << algorithm << std::endl;
+	std::cerr << "Wrong ml_model_name input: " << ml_model_name << std::endl;
 	exit(1);
       }
       
@@ -119,7 +119,7 @@ int main(int argc, char* argv[]) {
       std::cout << "trial_num " << trial_num << " done." << std::endl;
       std::cout << "Collecting results..." << std::endl;
       for(size_t epoch_num = 0; epoch_num < num_epochs + 1; ++epoch_num) {
-	ml_stat.collect_results(epoch_num, ml_model);
+	ml_stat.collect_results(epoch_num, ml_model, ml_model_name);
       }
       ml_stat.print_results();
       ml_stat.fout_log_per_epoch();

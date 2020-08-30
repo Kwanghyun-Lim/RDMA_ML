@@ -9,6 +9,7 @@
 
 #include "utils/utils.hpp"
 #include "utils/cnpy.hpp"
+#include "ml_model.hpp"
 
 namespace ml_model {
 class relu {
@@ -65,9 +66,9 @@ public:
   const size_t batch_size;
 };
   
-class deep_neural_network {
+class deep_neural_network : public ml_model {
 public:
-    deep_neural_network(const std::vector<uint32_t>& layer_size_vec, const uint32_t num_layers,
+    deep_neural_network(const std::vector<uint32_t> layer_size_vec, const uint32_t num_layers,
 		    const utils::reader_t& dataset_loader, const double alpha,
 		    const size_t batch_size, const bool is_worker);
 
@@ -79,13 +80,17 @@ public:
 
     void compute_gradient(const size_t batch_num);
     void update_model();
+    void update_model(uint ml_sst_row);
 
     void set_model_mem(double* model);
     void initialize_model_mem_with_zero();
+    void push_back_to_grad_vec(double* gradient);
     void set_gradient_mem(double* gradient);
 
     size_t get_model_size() const;
 
+    double* get_model() const;
+    size_t get_num_batches() const;
     size_t get_num_batches(const utils::images_t& images) const;
     size_t get_num_images() const;
     void init_model(double* model, std::string full_path);
@@ -99,9 +104,10 @@ private:
     size_t model_size = 0;
     double* model = NULL;
     double* gradient;
+    std::vector<double*> gradients;
     const double alpha;
     const size_t batch_size;
-    const std::vector<uint32_t>& layer_size_vec;
+    const std::vector<uint32_t> layer_size_vec;
     const uint32_t num_layers;
 
     std::vector<affine*> affine_layers;
