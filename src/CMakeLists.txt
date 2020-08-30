@@ -7,13 +7,13 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 set(CMAKE_DISABLE_SOURCE_CHANGES ON)
 set(CMAKE_DISABLE_IN_SOURCE_BUILD ON)
 
-PROJECT(logistic_regression CXX)
+PROJECT(RDMA_ML CXX)
 
 add_subdirectory(applications)
 add_subdirectory(coordinator)
 add_subdirectory(utils)
 
-add_library(logistic_regression
+add_library(RDMA_ML
   SHARED
   ml_model.hpp
   ml_model.cpp
@@ -21,4 +21,4 @@ add_library(logistic_regression
   log_reg.cpp
   dnn.hpp
   dnn.cpp)
-target_link_libraries(logistic_regression PUBLIC openblas utils)
+target_link_libraries(RDMA_ML PUBLIC openblas utils)

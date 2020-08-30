@@ -3,29 +3,17 @@ cmake_minimum_required(VERSION 3.0)
 add_executable(local local.cpp)
 target_include_directories(local
   PUBLIC
-  ${logistic_regression_SOURCE_DIR})
-target_link_libraries(local logistic_regression utils)
-
-add_executable(local_log_reg local_log_reg.cpp)
-target_include_directories(local_log_reg
-  PUBLIC
-  ${logistic_regression_SOURCE_DIR})
-target_link_libraries(local_log_reg logistic_regression utils)
-
-add_executable(local_dnn local_dnn.cpp)
-target_include_directories(local_dnn
-  PUBLIC
-  ${logistic_regression_SOURCE_DIR})
-target_link_libraries(local_dnn logistic_regression utils)
+  ${RDMA_ML_SOURCE_DIR})
+target_link_libraries(local RDMA_ML utils)
 
 add_executable(worker worker.cpp worker.hpp)
 target_include_directories(worker
   PUBLIC
-  ${logistic_regression_SOURCE_DIR})
-target_link_libraries(worker coordinator logistic_regression utils)
+  ${RDMA_ML_SOURCE_DIR})
+target_link_libraries(worker coordinator RDMA_ML utils)
 
 add_executable(server server.cpp server.hpp)
 target_include_directories(server
   PUBLIC
-  ${logistic_regression_SOURCE_DIR})
-target_link_libraries(server coordinator logistic_regression utils)
+  ${RDMA_ML_SOURCE_DIR})
+target_link_libraries(server coordinator RDMA_ML utils)
