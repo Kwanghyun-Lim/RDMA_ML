@@ -1,7 +1,9 @@
 #pragma once
 
 #include "coordinator/ml_sst.hpp"
+#include "ml_model.hpp"
 #include "log_reg.hpp"
+#include "dnn.hpp"
 #include <atomic>
 #include <chrono>
 #include <queue>

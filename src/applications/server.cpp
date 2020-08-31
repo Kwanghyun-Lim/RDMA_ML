@@ -14,7 +14,6 @@
 #include "coordinator/ml_sst.hpp"
 #include "coordinator/tcp.hpp"
 #include "coordinator/verbs.h"
-#include "log_reg.hpp"
 #include "utils/numpy_reader.hpp"
 #include "utils/ml_stat.hpp"
 
@@ -81,10 +80,17 @@ int main(int argc, char* argv[]) {
          ml_model = new ml_model::multinomial_log_reg(
      	     [&]() {return (utils::dataset)numpy::numpy_dataset(
 		                       data_directory + "/" + data,
-		                       (num_nodes - 1), node_rank);},
+		                       num_nodes - 1, 0);},
                                        alpha, gamma, decay, batch_size);
       } else if (ml_model_name == "dnn") {
-	// TODO
+	const std::vector<uint32_t> layer_size_vec {784, 50, 10};
+        const uint32_t num_layers = 3;
+        ml_model = new ml_model::deep_neural_network(
+	    layer_size_vec, num_layers,	     
+            [&]() {return (utils::dataset)numpy::numpy_dataset(
+		                       data_directory + "/" + data,
+		                       num_nodes - 1, 0);},
+                                       alpha, batch_size, false);
       } else {
 	std::cerr << "Wrong ml_model_name input: " << ml_model_name << std::endl;
 	exit(1);

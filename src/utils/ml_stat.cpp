@@ -217,7 +217,8 @@ void utils::ml_stat_t::collect_results(uint32_t epoch_num, ml_model::ml_model* m
       dist_to_opt[epoch_num] = ml_model->distance_to_optimum();
       grad_norm[epoch_num] = ml_model->gradient_norm();
     } else if (ml_model_name == "dnn") {
-      loss_gap[epoch_num] = 0;
+      // ***loss_gap is just used as loss.
+      loss_gap[epoch_num] = ml_model->training_loss() - 0.0;
       dist_to_opt[epoch_num] = 0;
       grad_norm[epoch_num] = 0;
     } else {

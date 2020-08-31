@@ -8,6 +8,7 @@
 #include "coordinator/tcp.hpp"
 #include "utils/ml_stat.hpp"
 #include "log_reg.hpp"
+#include "dnn.hpp"
 
 namespace worker {
 class worker {
