@@ -151,18 +151,16 @@ ml_model::deep_neural_network::deep_neural_network(
     model_size += layer_size_vec[i] * layer_size_vec[i+1] + layer_size_vec[i+1]; 
   }
   
-  if (is_worker) {
-    for (int i = 0; i < num_layers - 1; ++i) {
-      affine_layers.push_back(new affine(layer_size_vec[i], layer_size_vec[i+1], batch_size));
-    }
-
-    // exclude the last layer since we use softmax as the last layer.
-    for (int i = 0; i < num_layers - 2; ++i) {
-      relu_layers.push_back(new relu(layer_size_vec[i+1], batch_size));
-    }
-
-    last_layer = new softmax(layer_size_vec[num_layers-1], batch_size);
+  for (int i = 0; i < num_layers - 1; ++i) {
+    affine_layers.push_back(new affine(layer_size_vec[i], layer_size_vec[i+1], batch_size));
   }
+
+  // exclude the last layer since we use softmax as the last layer.
+  for (int i = 0; i < num_layers - 2; ++i) {
+    relu_layers.push_back(new relu(layer_size_vec[i+1], batch_size));
+  }
+
+  last_layer = new softmax(layer_size_vec[num_layers-1], batch_size);
 }
 
 void ml_model::deep_neural_network::train(const size_t num_epochs) {
@@ -238,15 +236,13 @@ void ml_model::deep_neural_network::update_model(uint ml_sst_row) {
 void ml_model::deep_neural_network::set_model_mem(double* model) {
   this->model = model;
   double* model_seek = model;
-  if (is_worker) {
-    for (int i = 0; i < num_layers - 1; ++i) {
-      size_t W_b_size
-	= affine_layers[i]->W_row_len * affine_layers[i]->W_col_len + affine_layers[i]->b_len;
+  for (int i = 0; i < num_layers - 1; ++i) {
+    size_t W_b_size
+      = affine_layers[i]->W_row_len * affine_layers[i]->W_col_len + affine_layers[i]->b_len;
 
-      affine_layers[i]->W = model_seek;
-      affine_layers[i]->b = model_seek + W_b_size - affine_layers[i]->b_len;
-      model_seek += W_b_size;
-    }
+    affine_layers[i]->W = model_seek;
+    affine_layers[i]->b = model_seek + W_b_size - affine_layers[i]->b_len;
+    model_seek += W_b_size;
   }
 }
 
