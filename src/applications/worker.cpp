@@ -103,6 +103,16 @@ int main(int argc, char* argv[]) {
       sst::MLSST ml_sst(std::vector<uint32_t>{0, node_rank}, node_rank,
 			ml_model->get_model_size(), num_nodes);
       ml_model->set_model_mem((double*)std::addressof(ml_sst.model_or_gradient[0][0]));
+      if (ml_model_name == "log_reg") {
+	utils::zero_arr(ml_model->get_model(), ml_model->get_model_size());
+      } else if (ml_model_name == "dnn") {
+	std::string model_full_path = data_directory + "/" + data + "/model_784-50-10.npy";
+	ml_model->init_model(ml_model->get_model(), model_full_path);
+      } else {
+      	std::cerr << "Wrong ml_model_name input: " << ml_model_name << std::endl;
+	exit(1);
+      }
+      
       ml_model->push_back_to_grad_vec((double*)std::addressof(
 				       ml_sst.model_or_gradient[1][0]));
       utils::ml_stat_t ml_stat(trial_num, num_nodes, num_epochs,

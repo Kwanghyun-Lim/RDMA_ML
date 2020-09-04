@@ -174,14 +174,16 @@ utils::ml_stat_t::ml_stat_t(uint32_t trial_num, uint32_t num_nodes,
 	  timer(),
 	  num_broadcasts(0)
 {
-    for(uint epoch_num = 0; epoch_num < num_epochs + 1; ++epoch_num) {
+    if (node_rank == 0) {
+      for(uint epoch_num = 0; epoch_num < num_epochs + 1; ++epoch_num) {
         intermediate_models[epoch_num] = new double[model_size];
         for(uint i = 0; i < model_size; ++i) {
-            intermediate_models[epoch_num][model_size] = 0;
+	  intermediate_models[epoch_num][model_size] = 0;
         }
+      }
+    
+      set_epoch_parameters(0, ml_model->get_model(), ml_sst);
     }
-
-    set_epoch_parameters(0, ml_model->get_model(), ml_sst);
 }
 
 void utils::ml_stat_t::set_epoch_parameters(
@@ -197,7 +199,8 @@ void utils::ml_stat_t::set_epoch_parameters(
     cumulative_num_broadcasts[epoch_num] = num_broadcasts;
     num_model_updates[epoch_num] = ml_sst.round[0];
     for(uint node_num = 1; node_num < num_nodes; ++node_num) {
-        num_gradients_received[epoch_num][node_num] = ml_sst.round[node_num];
+      num_gradients_received[epoch_num][node_num] = 0; // For debugging
+      num_gradients_received[epoch_num][node_num] = ml_sst.round[node_num];
         num_gradients_received[epoch_num][0] +=
 	  num_gradients_received[epoch_num][node_num];
 	this->num_lost_gradients[epoch_num][node_num] =

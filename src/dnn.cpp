@@ -144,7 +144,7 @@ ml_model::deep_neural_network::deep_neural_network(
         : layer_size_vec(layer_size_vec),
 	  num_layers(num_layers),
           dataset(dataset_loader()),
-          alpha(alpha),
+          alpha(alpha / dataset.num_parts),
           batch_size(batch_size),
           is_worker(is_worker) {
   for (int i = 0; i < num_layers - 1; ++i) {
@@ -185,10 +185,12 @@ double ml_model::deep_neural_network::test_error() {
     return compute_error(dataset.test_images, dataset.test_labels);
 }
 
-void ml_model::deep_neural_network::compute_gradient(const size_t batch_num) {
+void ml_model::deep_neural_network::compute_gradient(size_t batch_num) {
     const utils::images_t& images = dataset.training_images;
     const utils::labels_t& labels = dataset.training_labels;
 
+    batch_num += dataset.part_num * get_num_batches(); // convert from local batch_num to global batch_num
+    
     // feed forward
     double* Y =	affine_layers[0]->forward(images.arr.get(), batch_num, images.num_total_images);
     utils::matrix_t affine_Y(Y, affine_layers[0]->batch_size, affine_layers[0]->W_col_len);

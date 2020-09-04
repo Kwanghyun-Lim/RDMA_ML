@@ -78,7 +78,7 @@ public:
     double training_loss();
     double test_error();
 
-    void compute_gradient(const size_t batch_num);
+    void compute_gradient(size_t batch_num);
     void update_model();
     void update_model(uint ml_sst_row);
 

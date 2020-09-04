@@ -100,6 +100,16 @@ int main(int argc, char* argv[]) {
 			ml_model->get_model_size(), num_nodes);
       ml_model->set_model_mem(
 	      (double*)std::addressof(ml_sst.model_or_gradient[0][0]));
+      if (ml_model_name == "log_reg") {
+	utils::zero_arr(ml_model->get_model(), ml_model->get_model_size());
+      } else if (ml_model_name == "dnn") {
+	std::string model_full_path = data_directory + "/" + data + "/model_784-50-10.npy";
+	ml_model->init_model(ml_model->get_model(), model_full_path);
+      } else {
+      	std::cerr << "Wrong ml_model_name input: " << ml_model_name << std::endl;
+	exit(1);
+      }
+      
       for (uint row = 1; row < ml_sst.get_num_rows(); ++row) {
 	ml_model->push_back_to_grad_vec(
 	      (double*)std::addressof(ml_sst.model_or_gradient[row][0]));
