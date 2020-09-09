@@ -15,11 +15,11 @@
     xlabel = Number of epochs,
     ylabel = Training Accuracy (\%),
     xmin = 0,
-    %% xmax = 16,
     xmax = 50,
-    ymin = 80,
-    ymax = 100,
-    ytick distance = 2,
+    ymin = 92,
+    %% ymax = 96, %% for rff
+    ymax = 100, %% for nn
+    ytick distance = 0.5,
     ytick pos = left,
     ylabel near ticks,
     yticklabel pos=left,
@@ -30,7 +30,8 @@
     color=teal,
     mark=o,
     style=solid,thick,
-    ] table [x={num_epochs}, y={training_accuracy}]{/home/kwang/RDMA_ML/experiments/rff/sync/logs/RDMAwild.log.mean};
+    %% ] table [x={num_epochs}, y={training_accuracy}]{/home/kwang/RDMA_ML/experiments/log_reg/rff/sync/logs/RDMAwild.log.mean}; %% for rff
+    ] table [x={num_epochs}, y={training_accuracy}]{/home/kwang/RDMA_ML/experiments/nn/mnist/sync/logs/RDMAwild.log.mean}; %% for nn
     \addlegendimage{mark=o, teal, thick}
     \addlegendentry{sync}
     
@@ -39,7 +40,8 @@
     color=blue,
     mark=diamond,
     style=solid,thick,
-    ] table [x={num_epochs}, y={training_accuracy}]{/home/kwang/RDMA_ML/experiments/rff/async/logs/RDMAwild.log.mean};
+    %% ] table [x={num_epochs}, y={training_accuracy}]{/home/kwang/RDMA_ML/experiments/log_reg/rff/async/logs/RDMAwild.log.mean}; %% for rff
+    ] table [x={num_epochs}, y={training_accuracy}]{/home/kwang/RDMA_ML/experiments/nn/mnist/async/logs/RDMAwild.log.mean}; %% for nn
     \addlegendimage{mark=diamond, blue, thick}
     \addlegendentry{async}
     

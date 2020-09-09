@@ -51,10 +51,13 @@ result: lr=9, decay=0.9
 
 ## How to run (Emacs Lisp)
 ### MNIST
-(run (lambda (x) (if (= x 1) "./server ~/RDMA_ML/dataset mnist sync 0.9 0.9 120 15 16 5" (concat "./worker ~/RDMA_ML/dataset mnist sync 0.9 0.9 120 15 " (number-to-string (1- x)) " 16 5"))))
-(run (lambda (x) (if (= x 1) "./server ~/RDMA_ML/dataset mnist async 0.9 0.9 120 15 16 5" (concat "./worker ~/RDMA_ML/dataset mnist async 0.9 0.9 120 15 " (number-to-string (1- x)) " 16 5"))))
-(run (lambda (x) (if (= x 1) "./server ~/RDMA_ML/dataset mnist fully_async 0.9 0.9 120 15 16 5" (concat "./worker ~/RDMA_ML/dataset mnist fully_async 0.9 0.9 120 15 " (number-to-string (1- x)) " 16 5"))))
+(run (lambda (x) (if (= x 1) "./server ~/RDMA_ML/dataset mnist sync log_reg 0.9 0.9 120 15 16 5" (concat "./worker ~/RDMA_ML/dataset mnist sync log_reg 0.9 0.9 120 15 " (number-to-string (1- x)) " 16 5"))))
+(run (lambda (x) (if (= x 1) "./server ~/RDMA_ML/dataset mnist async log_reg 0.9 0.9 120 15 16 5" (concat "./worker ~/RDMA_ML/dataset mnist async log_reg 0.9 0.9 120 15 " (number-to-string (1- x)) " 16 5"))))
+(run (lambda (x) (if (= x 1) "./server ~/RDMA_ML/dataset mnist fully_async log_reg 0.9 0.9 120 15 16 5" (concat "./worker ~/RDMA_ML/dataset mnist fully_async log_reg 0.9 0.9 120 15 " (number-to-string (1- x)) " 16 5"))))
 ### MNIST RFF
-(run (lambda (x) (if (= x 1) "./server ~/RDMA_ML/dataset rff sync 9 0.9 120 50 16 5" (concat "./worker ~/RDMA_ML/dataset rff sync 9 0.9 120 50 " (number-to-string (1- x)) " 16 5"))))
-(run (lambda (x) (if (= x 1) "./server ~/RDMA_ML/dataset rff async 9 0.9 120 50 16 5" (concat "./worker ~/RDMA_ML/dataset rff async 9 0.9 120 50 " (number-to-string (1- x)) " 16 5"))))
-(run (lambda (x) (if (= x 1) "./server ~/RDMA_ML/dataset rff fully_async 9 0.9 120 50 16 5" (concat "./worker ~/RDMA_ML/dataset rff fully_async 9 0.9 120 50 " (number-to-string (1- x)) " 16 5"))))
+(run (lambda (x) (if (= x 1) "./server ~/RDMA_ML/dataset rff sync log_reg 9 0.9 120 50 16 5" (concat "./worker ~/RDMA_ML/dataset rff sync log_reg 9 0.9 120 50 " (number-to-string (1- x)) " 16 5"))))
+(run (lambda (x) (if (= x 1) "./server ~/RDMA_ML/dataset rff async log_reg 9 0.9 120 50 16 5" (concat "./worker ~/RDMA_ML/dataset rff async log_reg 9 0.9 120 50 " (number-to-string (1- x)) " 16 5"))))
+(run (lambda (x) (if (= x 1) "./server ~/RDMA_ML/dataset rff fully_async log_reg 9 0.9 120 50 16 5" (concat "./worker ~/RDMA_ML/dataset rff fully_async log_reg 9 0.9 120 50 " (number-to-string (1- x)) " 16 5"))))
+
+### MNIST dnn
+(run (lambda (x) (if (= x 1) "./server ~/RDMA_ML/dataset mnist sync dnn 0.1 0.9 120 50 16 3" (concat "./worker ~/RDMA_ML/dataset mnist sync dnn 0.1 0.9 120 50 " (number-to-string (1- x)) " 16 3"))))
