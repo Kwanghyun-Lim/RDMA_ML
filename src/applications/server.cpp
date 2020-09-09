@@ -83,7 +83,7 @@ int main(int argc, char* argv[]) {
 		                       num_nodes - 1, 0);},
                                        alpha, gamma, decay, batch_size);
       } else if (ml_model_name == "dnn") {
-	const std::vector<uint32_t> layer_size_vec {784, 50, 10};
+	const std::vector<uint32_t> layer_size_vec {784, 128, 10};
         const uint32_t num_layers = 3;
         ml_model = new ml_model::deep_neural_network(
 	    layer_size_vec, num_layers,	     
@@ -103,7 +103,7 @@ int main(int argc, char* argv[]) {
       if (ml_model_name == "log_reg") {
 	utils::zero_arr(ml_model->get_model(), ml_model->get_model_size());
       } else if (ml_model_name == "dnn") {
-	std::string model_full_path = data_directory + "/" + data + "/model_784-50-10.npy";
+	std::string model_full_path = data_directory + "/" + data + "/model_784-128-10.npy";
 	ml_model->init_model(ml_model->get_model(), model_full_path);
       } else {
       	std::cerr << "Wrong ml_model_name input: " << ml_model_name << std::endl;
