@@ -9,8 +9,8 @@
 #include <queue>
 #include <string>
 
-#define FRONT_END_THREAD 0
-#define BACK_END_THREAD 1
+#define COMPUTE_THREAD 0
+#define NETWORK_THREAD 1
 namespace utils {
 class ml_timer_t {
 public:
@@ -37,8 +37,8 @@ public:
   struct timespec train_start_time, train_end_time;
   double train_time_taken;
   std::queue<std::pair<std::pair<uint64_t, uint64_t>, uint32_t>> op_time_log_q;
-  std::queue<std::pair<std::pair<uint64_t, uint64_t>, uint32_t>> op_time_log_q_front;
-  std::queue<std::pair<std::pair<uint64_t, uint64_t>, uint32_t>> op_time_log_q_back;
+  std::queue<std::pair<std::pair<uint64_t, uint64_t>, uint32_t>> op_time_log_q_compute;
+  std::queue<std::pair<std::pair<uint64_t, uint64_t>, uint32_t>> op_time_log_q_network;
 };
   
 class ml_stat_t {

@@ -213,7 +213,7 @@ worker::async_worker::~async_worker() {
 }
 
 void worker::async_worker::train(const size_t num_epochs) {
-  ml_sst.sync_with_members(); // barrier pair with server #1
+  ml_sst.sync_with_members(); // barrier #1 with server and other workers
   ml_stat.timer.set_start_time();
   std::vector<uint32_t> server{0};
   
@@ -232,14 +232,13 @@ void worker::async_worker::train(const size_t num_epochs) {
       ml_sst.round[1]++;
       ml_stat.timer.set_push_start();
       ml_sst.put_with_completion();
-      // ml_sst.put_with_completion(server, ALL_FIELDS);
       ml_stat.timer.set_push_end();
     }
-    ml_sst.sync_with_members(); // barrier pair with server #2
-    // Between those two, server stores intermidiate models and parameters for statistics
-    ml_sst.sync_with_members(); // barrier pair with server #3
+    ml_sst.sync_with_members(); // barrier #2 with server and other workers
+    // During this time frame, server stores intermidiate model for statistics
+    ml_sst.sync_with_members(); // barrier #3 with server and other workers
   }
-  ml_sst.sync_with_members(); // barrier pair with server #4
+  ml_sst.sync_with_members(); // barrier #4 with server and other workers
 }
 
 worker::fully_async_worker::fully_async_worker(ml_model::ml_model* ml_model,
@@ -254,34 +253,32 @@ worker::fully_async_worker::~fully_async_worker() {
 }
 
 void worker::fully_async_worker::train(const size_t num_epochs) {
-  ml_sst.sync_with_members(); // barrier pair with server #1
+  ml_sst.sync_with_members(); // barrier #1 with server and other workers
   ml_stat.timer.set_start_time();
   uint64_t last_model_round;
   const size_t num_batches = ml_model->get_num_batches();
   for(size_t epoch_num = 0; epoch_num < num_epochs; ++epoch_num) {
     for(size_t batch_num = 0; batch_num < num_batches; ++batch_num) {
-
+      last_model_round = ml_sst.round[0];
       ml_stat.timer.set_compute_start();
       ml_model->compute_gradient(batch_num);
-      ml_stat.timer.set_compute_end(FRONT_END_THREAD);
-
-      last_model_round = ml_sst.round[0];
+      ml_stat.timer.set_compute_end(COMPUTE_THREAD);
       ml_sst.round[1]++;
       
       ml_stat.timer.set_push_start();
       ml_sst.put_with_completion();
-      // ml_stat.timer.set_push_end(BACK_END_THREAD);
-      ml_stat.timer.set_push_end(FRONT_END_THREAD); // TO FIX
+      // ml_stat.timer.set_push_end(NETWORK_THREAD);
+      ml_stat.timer.set_push_end(COMPUTE_THREAD); // TO FIX
       
       ml_stat.timer.set_wait_start();
-      while (ml_sst.round[0] <= last_model_round) {
+      while (ml_sst.round[0] == last_model_round) {
       }
-      ml_stat.timer.set_wait_end(FRONT_END_THREAD);
+      ml_stat.timer.set_wait_end(COMPUTE_THREAD);
     }
-    ml_sst.sync_with_members(); // barrier pair with server #2
-    // Between those two, server stores intermidiate models and parameters for statistics
-    ml_sst.sync_with_members(); // barrier pair with server #3
+    ml_sst.sync_with_members(); // barrier #2 with server and other workers
+    // During this time frame, server stores intermidiate model for statistics
+    ml_sst.sync_with_members(); // barrier #3 with server and other workers
   }
-  ml_sst.sync_with_members(); // barrier pair with server #4
+  ml_sst.sync_with_members(); // barrier #4 with server and other workers
 }
 

@@ -40,10 +40,10 @@ void utils::ml_timer_t::set_wait_end(int thread) {
   clock_gettime(CLOCK_REALTIME, &end_time);
   wait_end = (end_time.tv_sec - start_time.tv_sec) * 1e9
     + (end_time.tv_nsec - start_time.tv_nsec);
-  if(thread == FRONT_END_THREAD) {
-    op_time_log_q_front.push({{wait_start, wait_end}, WAIT});
-  } else if(thread == BACK_END_THREAD) {
-    op_time_log_q_back.push({{wait_start, wait_end}, WAIT});
+  if(thread == COMPUTE_THREAD) {
+    op_time_log_q_compute.push({{wait_start, wait_end}, WAIT});
+  } else if(thread == NETWORK_THREAD) {
+    op_time_log_q_network.push({{wait_start, wait_end}, WAIT});
   } else {
     std::cerr << "Wrong input " << thread << std::endl;
     exit(1);
@@ -69,10 +69,10 @@ void utils::ml_timer_t::set_compute_end(int thread) {
   clock_gettime(CLOCK_REALTIME, &end_time);
   compute_end = (end_time.tv_sec - start_time.tv_sec) * 1e9
     + (end_time.tv_nsec - start_time.tv_nsec);
-  if(thread == FRONT_END_THREAD) {
-    op_time_log_q_front.push({{compute_start, compute_end}, COMPUTE});
-  } else if(thread == BACK_END_THREAD) {
-    op_time_log_q_back.push({{compute_start, compute_end}, COMPUTE});
+  if(thread == COMPUTE_THREAD) {
+    op_time_log_q_compute.push({{compute_start, compute_end}, COMPUTE});
+  } else if(thread == NETWORK_THREAD) {
+    op_time_log_q_network.push({{compute_start, compute_end}, COMPUTE});
   } else {
     std::cerr << "Wrong input " << thread << std::endl;
     exit(1);
@@ -99,10 +99,10 @@ void utils::ml_timer_t::set_push_end(int thread) {
   push_end = (end_time.tv_sec - start_time.tv_sec) * 1e9
     + (end_time.tv_nsec - start_time.tv_nsec);
 
-  if(thread == FRONT_END_THREAD) {
-    op_time_log_q_front.push({{push_start, push_end}, PUSH});
-  } else if(thread == BACK_END_THREAD) {
-    op_time_log_q_back.push({{push_start, push_end}, PUSH});
+  if(thread == COMPUTE_THREAD) {
+    op_time_log_q_compute.push({{push_start, push_end}, PUSH});
+  } else if(thread == NETWORK_THREAD) {
+    op_time_log_q_network.push({{push_start, push_end}, PUSH});
   } else {
     std::cerr << "Wrong input: " << thread << std::endl;
     exit(1);
@@ -357,16 +357,16 @@ void utils::ml_stat_t::fout_op_time_log(bool is_server, bool is_fully_async) {
     if(!is_fully_async) {
       log_file.open("server.log", std::ofstream::trunc);
     } else {
-      log_file_front.open("server_front.log", std::ofstream::trunc);
-      log_file_back.open("server_back.log", std::ofstream::trunc);
+      log_file_front.open("server_compute.log", std::ofstream::trunc);
+      log_file_back.open("server_network.log", std::ofstream::trunc);
     }
   } else {
     if(!is_fully_async) {
       log_file.open("worker" + std::to_string(node_rank) + ".log", std::ofstream::trunc);
     } else {
-      log_file_front.open("worker_front" + std::to_string(node_rank) + ".log",
+      log_file_front.open("worker_compute" + std::to_string(node_rank) + ".log",
 			  std::ofstream::trunc);
-      log_file_back.open("worker_back" + std::to_string(node_rank) + ".log",
+      log_file_back.open("worker_network" + std::to_string(node_rank) + ".log",
 			 std::ofstream::trunc);
     }
   }
@@ -379,16 +379,16 @@ void utils::ml_stat_t::fout_op_time_log(bool is_server, bool is_fully_async) {
 	       << item.second << std::endl;
     }
   } else {
-    while (!timer.op_time_log_q_front.empty()) {
-      std::pair<std::pair<uint64_t, uint64_t>, uint32_t> item = timer.op_time_log_q_front.front();
-      timer.op_time_log_q_front.pop();
+    while (!timer.op_time_log_q_compute.empty()) {
+      std::pair<std::pair<uint64_t, uint64_t>, uint32_t> item = timer.op_time_log_q_compute.front();
+      timer.op_time_log_q_compute.pop();
       log_file_front <<  item.first.first << " " << item.first.second << " "
 		     << item.second << std::endl;
     }
   
-    while (!timer.op_time_log_q_back.empty()) {
-      std::pair<std::pair<uint64_t, uint64_t>, uint32_t> item = timer.op_time_log_q_back.front();
-      timer.op_time_log_q_back.pop();
+    while (!timer.op_time_log_q_network.empty()) {
+      std::pair<std::pair<uint64_t, uint64_t>, uint32_t> item = timer.op_time_log_q_network.front();
+      timer.op_time_log_q_network.pop();
       log_file_back <<  item.first.first << " " << item.first.second << " "
 		    << item.second << std::endl;
     }

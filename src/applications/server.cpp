@@ -253,7 +253,6 @@ void server::async_server::train(const size_t num_epochs) {
 	  // If new gradients arrived, update model
 	  if(ml_sst.last_round[0][row] < num_epochs * num_batches &&
 	     ml_sst.round[row] > ml_sst.last_round[0][row]) {
-	    // std::cout << "updated: row=" << row << "ml_sst.round=" << ml_sst.round[row] << std::endl;
 	    // Counts # of lost gradients.
 	    if(ml_sst.round[row] - ml_sst.last_round[0][row] > 1) {
 	      ml_stat.num_lost_gradients_per_node[row] +=
@@ -270,14 +269,7 @@ void server::async_server::train(const size_t num_epochs) {
 	
 	if(!receivers.empty()) {
 	  ml_stat.timer.set_push_start();
-	  // std::cout << "receivers= ";
-	  // for(int i = 0; i < receivers.size(); ++i) {
-	  //   std::cout << i << " ";
-	  // }
-	  // std::cout << std::endl;
-	  // std::cout << "before put_with_completion(receivers)" << std::endl;
 	  ml_sst.put_with_completion(receivers);
-	  // std::cout << "after put_with_completion(receivers)" << std::endl;
 	  ml_stat.timer.set_push_end();
 	  ml_stat.num_broadcasts++;
 	  receivers.clear();
@@ -285,20 +277,20 @@ void server::async_server::train(const size_t num_epochs) {
       }
     };
   std::thread model_update_broadcast_thread = std::thread(model_update_broadcast_loop);
-  ml_sst.sync_with_members(); // barrier pair with worker #1
+  ml_sst.sync_with_members(); // barrier #1 with workers for the training start
   ml_stat.timer.set_start_time();
   for(size_t epoch_num = 0; epoch_num < num_epochs; ++epoch_num) {
-    // Between the barrier #1 above and #2 below, workers train.
     ml_stat.timer.set_train_start();
-    ml_sst.sync_with_members(); // barrier pair with worker #2
+    // Workers are training within this time frame here.
+    ml_sst.sync_with_members(); // barrier #2 with workers for the training end per epoch
     ml_stat.timer.set_train_end();
     ml_stat.set_epoch_parameters(epoch_num + 1, ml_model->get_model(),
 				 ml_sst);
-    ml_sst.sync_with_members(); // barrier pair with worker #3
+    ml_sst.sync_with_members(); // barrier #3 with workers for statistics per epoch
   }
   training = false;
   model_update_broadcast_thread.join();
-  ml_sst.sync_with_members(); // barrier pair with worker #4
+  ml_sst.sync_with_members(); // barrier #4 with workers for the trainig end
 }
 
 server::fully_async_server::fully_async_server(ml_model::ml_model* ml_model,
@@ -332,7 +324,7 @@ void server::fully_async_server::train(const size_t num_epochs) {
 	    last_round[row] = ml_sst.round[row];
 	    ml_stat.timer.set_compute_start();
 	    ml_model->update_model(row);
-	    ml_stat.timer.set_compute_end(FRONT_END_THREAD);
+	    ml_stat.timer.set_compute_end(COMPUTE_THREAD);
 	    ml_sst.round[0]++;
 	  }
 	}
@@ -345,30 +337,30 @@ void server::fully_async_server::train(const size_t num_epochs) {
       while(training) {
 	if(ml_sst.round[0] > last_model_round) {
 	  ml_stat.timer.set_push_start();
-	  ml_sst.put_with_completion();
-	  ml_stat.timer.set_push_end(BACK_END_THREAD);
-	  ml_stat.num_broadcasts++;
-	  // TODO: count the model mixing ratio here.
 	  last_model_round = ml_sst.round[0];
+	  ml_sst.put_with_completion();
+	  ml_stat.timer.set_push_end(NETWORK_THREAD);
+	  ml_stat.num_broadcasts++;
+	  // TODO: measure model inconsistency ratio per broadcast here.
 	}
       }
     };
   
   std::thread model_update_thread = std::thread(model_update_loop);
   std::thread model_broadcast_thread = std::thread(model_broadcast_loop);
-  ml_sst.sync_with_members(); // barrier pair with worker #1
+  ml_sst.sync_with_members(); // barrier #1 with workers for the training start
   ml_stat.timer.set_start_time();
   for(size_t epoch_num = 0; epoch_num < num_epochs; ++epoch_num) {
-    // Between the barrier #1 above and #2 below, workers train.
     ml_stat.timer.set_train_start();
-    ml_sst.sync_with_members(); // barrier pair with worker #2
+    // Workers are training within this time frame.
+    ml_sst.sync_with_members(); // barrier #2 with workers for the training end per epoch
     ml_stat.timer.set_train_end();
     ml_stat.set_epoch_parameters(epoch_num + 1, ml_model->get_model(),
 				 ml_sst);
-    ml_sst.sync_with_members(); // barrier pair with worker #3
+    ml_sst.sync_with_members(); // barrier #3 with workers for statistics per epoch
   }
   training = false;
   model_update_thread.join();
   model_broadcast_thread.join();
-  ml_sst.sync_with_members(); // barrier pair with worker #4
+  ml_sst.sync_with_members(); // barrier #4 with workers for the trainig end
 }
