@@ -6,11 +6,17 @@
 #include "ml_stat.hpp"
 
 utils::ml_timer_t::ml_timer_t() : relay_start(0), relay_end(0),
-				 compute_start(0), compute_end(0),
-				 push_start(0), push_end(0),
-				 wait_start(0), wait_end(0),
-				 relay_total(0), compute_total(0),
-				 push_total(0), wait_total(0) {
+				  compute_start(0), compute_end(0),
+				  push_start(0), push_end(0),
+				  wait_start(0), wait_end(0),
+				  wait_start_comthread(0),
+				  wait_end_comthread(0),
+				  wait_start_netthread(0),
+				  wait_end_netthread(0),
+				  relay_total(0), compute_total(0),
+				  push_total(0), wait_total(0),
+				  wait_total_comthread(0),
+				  wait_total_netthread(0) {
 }
 
 #define WAIT 0
@@ -36,19 +42,36 @@ void utils::ml_timer_t::set_wait_end() {
   wait_total += wait_end - wait_start;
 }
 
-void utils::ml_timer_t::set_wait_end(int thread) {
+void utils::ml_timer_t::set_wait_start(int thread) {
   clock_gettime(CLOCK_REALTIME, &end_time);
-  wait_end = (end_time.tv_sec - start_time.tv_sec) * 1e9
-    + (end_time.tv_nsec - start_time.tv_nsec);
   if(thread == COMPUTE_THREAD) {
-    op_time_log_q_compute.push({{wait_start, wait_end}, WAIT});
+    wait_start_comthread = (end_time.tv_sec - start_time.tv_sec) * 1e9
+      + (end_time.tv_nsec - start_time.tv_nsec);
   } else if(thread == NETWORK_THREAD) {
-    op_time_log_q_network.push({{wait_start, wait_end}, WAIT});
+    wait_start_netthread = (end_time.tv_sec - start_time.tv_sec) * 1e9
+      + (end_time.tv_nsec - start_time.tv_nsec);
   } else {
     std::cerr << "Wrong input " << thread << std::endl;
     exit(1);
   }
-  wait_total += wait_end - wait_start;
+}
+
+void utils::ml_timer_t::set_wait_end(int thread) {
+  clock_gettime(CLOCK_REALTIME, &end_time);
+  if(thread == COMPUTE_THREAD) {
+    wait_end_comthread = (end_time.tv_sec - start_time.tv_sec) * 1e9
+      + (end_time.tv_nsec - start_time.tv_nsec);
+    op_time_log_q_compute.push({{wait_start_comthread, wait_end_comthread}, WAIT});
+    wait_total_comthread += wait_end_comthread - wait_start_comthread;
+  } else if(thread == NETWORK_THREAD) {
+    wait_end_netthread = (end_time.tv_sec - start_time.tv_sec) * 1e9
+      + (end_time.tv_nsec - start_time.tv_nsec);
+    op_time_log_q_network.push({{wait_start_netthread, wait_end_netthread}, WAIT});
+    wait_total_netthread += wait_end_netthread - wait_start_netthread;
+  } else {
+    std::cerr << "Wrong input " << thread << std::endl;
+    exit(1);
+  }
 }
 
 void utils::ml_timer_t::set_compute_start() {
@@ -395,14 +418,24 @@ void utils::ml_stat_t::fout_op_time_log(bool is_server, bool is_fully_async) {
   }
   
   if (!is_server) {
-    std::ofstream worker_stat_file("worker" + std::to_string(node_rank) + ".stat",
-				   std::ofstream::trunc);
-    uint64_t total = timer.relay_total + timer.compute_total + timer.push_total + timer.wait_total;
-    worker_stat_file <<  "relay " << "compute " << "push " << "wait " << "total " << std::endl;
-    worker_stat_file <<  timer.relay_total << " " << timer.compute_total << " "
-		     << timer.push_total << " " << timer.wait_total << " " << total << std::endl;
-    worker_stat_file <<  float(timer.relay_total)/total << " " << float(timer.compute_total)/total << " "
-		     << float(timer.push_total)/total << " " << float(timer.wait_total)/total << " " << total << std::endl;
+    if (!is_fully_async) {
+      std::ofstream worker_stat_file("worker" + std::to_string(node_rank) + ".stat",
+				     std::ofstream::trunc);
+      uint64_t total = timer.relay_total + timer.compute_total + timer.push_total + timer.wait_total;
+      worker_stat_file <<  "relay " << "compute " << "push " << "wait " << "total " << std::endl;
+      worker_stat_file <<  timer.relay_total << " " << timer.compute_total << " "
+		       << timer.push_total << " " << timer.wait_total << " " << total << std::endl;
+      worker_stat_file <<  float(timer.relay_total)/total << " " << float(timer.compute_total)/total << " "
+		       << float(timer.push_total)/total << " " << float(timer.wait_total)/total << " " << total << std::endl;
+    } else {
+      std::ofstream worker_stat_file("worker" + std::to_string(node_rank) + ".stat",
+				     std::ofstream::trunc);
+      worker_stat_file <<  "compute " << "compute_wait " << "push " << "push_wait " << std::endl;
+      worker_stat_file  << timer.compute_total << " "
+			<< timer.wait_total_comthread << " "
+			<< timer.push_total << " "
+			<< timer.wait_total_netthread << " " << std::endl;
+    }
   }
 }
 

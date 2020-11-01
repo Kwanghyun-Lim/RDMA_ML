@@ -253,6 +253,7 @@ void server::async_server::train(const size_t num_epochs) {
 	  // If new gradients arrived, update model
 	  if(ml_sst.last_round[0][row] < num_epochs * num_batches &&
 	     ml_sst.round[row] > ml_sst.last_round[0][row]) {
+	    // std::cout << "updated: row=" << row << "ml_sst.round=" << ml_sst.round[row] << std::endl;
 	    // Counts # of lost gradients.
 	    if(ml_sst.round[row] - ml_sst.last_round[0][row] > 1) {
 	      ml_stat.num_lost_gradients_per_node[row] +=
@@ -281,7 +282,7 @@ void server::async_server::train(const size_t num_epochs) {
   ml_stat.timer.set_start_time();
   for(size_t epoch_num = 0; epoch_num < num_epochs; ++epoch_num) {
     ml_stat.timer.set_train_start();
-    // Workers are training within this time frame here.
+    // Workers are training during this time frame here.
     ml_sst.sync_with_members(); // barrier #2 with workers for the training end per epoch
     ml_stat.timer.set_train_end();
     ml_stat.set_epoch_parameters(epoch_num + 1, ml_model->get_model(),
@@ -316,16 +317,19 @@ void server::fully_async_server::train(const size_t num_epochs) {
 	  // If new gradients arrived, update model
 	  if(last_round[row] < num_epochs * num_batches &&
 	     ml_sst.round[row] > last_round[row]) {
+	    // std::cout << "updated: row=" << row << "ml_sst.round=" << ml_sst.round[row] << std::endl;
 	    // Counts # of lost gradients.
 	    if(ml_sst.round[row] - last_round[row] > 1) {
 	      ml_stat.num_lost_gradients_per_node[row] +=
 		ml_sst.round[row] - last_round[row] - 1;
 	    }
+	    
 	    last_round[row] = ml_sst.round[row];
 	    ml_stat.timer.set_compute_start();
 	    ml_model->update_model(row);
 	    ml_stat.timer.set_compute_end(COMPUTE_THREAD);
 	    ml_sst.round[0]++;
+	    // std::cout << "ml_sst.round[0]= " << ml_sst.round[0] << std::endl;
 	  }
 	}
       }
@@ -352,7 +356,7 @@ void server::fully_async_server::train(const size_t num_epochs) {
   ml_stat.timer.set_start_time();
   for(size_t epoch_num = 0; epoch_num < num_epochs; ++epoch_num) {
     ml_stat.timer.set_train_start();
-    // Workers are training within this time frame.
+    // Workers are training during this time frame.
     ml_sst.sync_with_members(); // barrier #2 with workers for the training end per epoch
     ml_stat.timer.set_train_end();
     ml_stat.set_epoch_parameters(epoch_num + 1, ml_model->get_model(),

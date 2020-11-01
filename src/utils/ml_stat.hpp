@@ -17,7 +17,9 @@ public:
   ml_timer_t();
   void set_start_time();
   void set_wait_start();  
+  void set_wait_start(int thread);  
   void set_wait_end();
+  void set_wait_end(int thread);
   void set_compute_start();
   void set_compute_end();
   void set_compute_end(int thread);
@@ -26,14 +28,16 @@ public:
   void set_push_end(int thread);
   void set_train_start();
   void set_train_end();
-  void set_wait_end(int thread);
 
   struct timespec start_time, end_time;
   uint64_t relay_start, relay_end;
   uint64_t compute_start, compute_end;
   uint64_t push_start, push_end;
   uint64_t wait_start, wait_end;
+  uint64_t wait_start_comthread, wait_end_comthread;
+  uint64_t wait_start_netthread, wait_end_netthread;
   uint64_t relay_total, compute_total, push_total, wait_total;
+  uint64_t wait_total_comthread, wait_total_netthread;
   struct timespec train_start_time, train_end_time;
   double train_time_taken;
   std::queue<std::pair<std::pair<uint64_t, uint64_t>, uint32_t>> op_time_log_q;

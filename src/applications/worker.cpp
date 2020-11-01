@@ -1,6 +1,7 @@
 #include <bits/stdc++.h>
 #include <cblas.h>
 #include <chrono>
+#include <cmath>
 #include <fstream>
 #include <iostream>
 #include <utility>
@@ -253,32 +254,63 @@ worker::fully_async_worker::~fully_async_worker() {
 }
 
 void worker::fully_async_worker::train(const size_t num_epochs) {
-  ml_sst.sync_with_members(); // barrier #1 with server and other workers
+  std::atomic<bool> training = true;
+  std::atomic<uint64_t> last_model_round = 0;
+  std::atomic<uint64_t> last_gradient_round = 0;
+  float staleness_threshold = 3.0;
+  float model_staleness = 0.0;
+  float normalized_model_round = 0.0;
+  
+  auto gradient_push_loop =
+    [this, &training, &last_gradient_round]() mutable {
+      pthread_setname_np(pthread_self(), ("push"));
+      while(training) {
+	if(ml_sst.round[1] > last_gradient_round) {
+	  last_gradient_round = ml_sst.round[1];
+	  ml_stat.timer.set_push_start();
+	  ml_sst.put_with_completion();
+	  ml_stat.timer.set_push_end(NETWORK_THREAD);
+	}
+      }
+    };
+  
+  std::thread gradient_push_thread = std::thread(gradient_push_loop);
+  
+  ml_sst.sync_with_members(); // barrier #1 with server and other workers for the training start
   ml_stat.timer.set_start_time();
-  uint64_t last_model_round;
+
+  const uint32_t num_nodes = ml_sst.get_num_rows();
   const size_t num_batches = ml_model->get_num_batches();
   for(size_t epoch_num = 0; epoch_num < num_epochs; ++epoch_num) {
-    for(size_t batch_num = 0; batch_num < num_batches; ++batch_num) {
-      last_model_round = ml_sst.round[0];
-      ml_stat.timer.set_compute_start();
-      ml_model->compute_gradient(batch_num);
-      ml_stat.timer.set_compute_end(COMPUTE_THREAD);
-      ml_sst.round[1]++;
-      
-      ml_stat.timer.set_push_start();
-      ml_sst.put_with_completion();
-      // ml_stat.timer.set_push_end(NETWORK_THREAD);
-      ml_stat.timer.set_push_end(COMPUTE_THREAD); // TO FIX
-      
-      ml_stat.timer.set_wait_start();
-      while (ml_sst.round[0] == last_model_round) {
+      for(size_t batch_num = 0; batch_num < num_batches; ++batch_num) {
+	  ml_stat.timer.set_compute_start();
+	  ml_model->compute_gradient(batch_num);
+	  last_model_round = ml_sst.round[0]; 
+	  ml_sst.round[1]++;
+	  ml_stat.timer.set_compute_end(COMPUTE_THREAD);
+	  
+	  ml_stat.timer.set_wait_start(COMPUTE_THREAD);
+	  // TO FIX: seems still sync between server and worker
+	  // while(ml_sst.round[0] == last_model_round) {
+	  // }
+	  normalized_model_round = ml_sst.round[0] / (num_nodes - 1);
+	  model_staleness = (float)ml_sst.round[1] - 1.0 - normalized_model_round;
+	  // std::cout << "normalized_model_round= " << normalized_model_round
+	  //           << " ml_sst.round[1]= " << ml_sst.round[1] 
+	  //           << " model_staleness= " << model_staleness << std::endl;
+	  while(model_staleness > staleness_threshold) {
+	    normalized_model_round = ml_sst.round[0] / (num_nodes - 1);
+	    model_staleness = (float)ml_sst.round[1] - 1.0 - normalized_model_round;
+	  }
+	  ml_stat.timer.set_wait_end(COMPUTE_THREAD);
       }
-      ml_stat.timer.set_wait_end(COMPUTE_THREAD);
-    }
-    ml_sst.sync_with_members(); // barrier #2 with server and other workers
-    // During this time frame, server stores intermidiate model for statistics
-    ml_sst.sync_with_members(); // barrier #3 with server and other workers
+      ml_sst.sync_with_members(); // barrier #2 with server and other workers for the training end per epoch
+      // During this time frame, server stores intermidiate model for statistics
+      ml_sst.sync_with_members(); // barrier #3 with server and other workers for statistics per epoch
   }
-  ml_sst.sync_with_members(); // barrier #4 with server and other workers
+
+  training = false;
+  gradient_push_thread.join();
+  ml_sst.sync_with_members(); // barrier #4 with server and other workers for the trainig end
 }
 
