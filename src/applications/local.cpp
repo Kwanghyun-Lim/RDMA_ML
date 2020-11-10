@@ -7,11 +7,31 @@
 #include "log_reg.hpp"
 #include "dnn.hpp"
 
+#ifndef NODE_TYPE
+#define SERVER false
+#define WORKER true
+#endif
+
+#ifndef LOG_TYPE
+#define SERVER_LOG true
+#define WORKER_LOG false
+
+#define FULLY_ASYNC_LOG true
+#define NOT_FULLY_ASYNC_LOG false
+#endif
+
+#ifndef SGD_TYPE
+#define SYNC 0
+#define ASYNC 1
+#define FULLY_ASYNC 2
+#endif
+
 int main(int argc, char* argv[]) {
     if(argc < 7) {
       std::cerr << "Usage: " << argv[0]
 		<< " <data_directory> <sync/mnist/rff> \
-<log_reg/dnn> <alpha> <decay> <batch_size> <num_epochs>" << std::endl;
+                     <log_reg/dnn> <alpha> <decay> <batch_size> \
+                     <num_epochs>" << std::endl;
         return 1;
     }
 
@@ -24,44 +44,53 @@ int main(int argc, char* argv[]) {
     double decay = std::stod(argv[5]);
     const uint32_t batch_size = atoi(argv[6]);
     const uint32_t num_epochs = atoi(argv[7]);
-    
+    bool has_buffers = false;
+
     ml_model::ml_model* ml_model;
     if (ml_model_name == "log_reg") {
-        ml_model = new ml_model::multinomial_log_reg(
+	std::cout << "ml_model_name=" << ml_model_name << std::endl;
+         ml_model = new ml_model::multinomial_log_reg(
      	     [&]() {return (utils::dataset)numpy::numpy_dataset(
 		                       data_directory + "/" + data,
 		                       1, 0);},
-                                       alpha, gamma, decay, batch_size);
+	     alpha, gamma, decay, batch_size,
+	     std::string(""), has_buffers, WORKER);
     } else if (ml_model_name == "dnn") {
         const std::vector<uint32_t> layer_size_vec {784, 50, 10};
         const uint32_t num_layers = 3;
+	const std::string init_model_file = data_directory + "/" + data +
+	  "/model_784-50-10.npy";
         ml_model = new ml_model::deep_neural_network(
 	    layer_size_vec, num_layers,	     
             [&]() {return (utils::dataset)numpy::numpy_dataset(
 		                       data_directory + "/" + data,
 		                       1, 0);},
-                                       alpha, batch_size, true);
+	    alpha, batch_size, 
+	    init_model_file,
+	    has_buffers, WORKER);
     } else {
-      	std::cerr << "Wrong ml_model_name input: " << ml_model_name << std::endl;
+      	std::cerr << "Wrong ml_model_name input: "
+		  << ml_model_name << std::endl;
 	exit(1);
     }
-
-    double* model = new double[ml_model->get_model_size()]; // ml_sst first row
+    
+    // Initialize model
+    double* model = new double[ml_model->get_model_size()]; 
     if (ml_model_name == "log_reg") {
       utils::zero_arr(model, ml_model->get_model_size());
     } else if (ml_model_name == "dnn") {
-      std::string model_full_path = data_directory + "/" + data + "/model_784-50-10.npy";
-      ml_model->init_model(model, model_full_path);
+      ml_model->init_model(model, ml_model->get_init_model_file());
     } else {
-      	std::cerr << "Wrong ml_model_name input: " << ml_model_name << std::endl;
+      	std::cerr << "Wrong ml_model_name input: " << ml_model_name
+		  << std::endl;
 	exit(1);
     }
     
-    double* gradient = new double[ml_model->get_model_size()]; // ml_sst my own row
+    double* gradient = new double[ml_model->get_model_size()]; 
     utils::zero_arr(gradient, ml_model->get_model_size());
     
     ml_model->set_model_mem(model);
-    ml_model->push_back_to_grad_vec(gradient);
+    ml_model->set_gradient_mem(gradient);
     
     struct timespec start_time, end_time;
     clock_gettime(CLOCK_REALTIME, &start_time);

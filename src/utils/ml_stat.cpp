@@ -3,7 +3,15 @@
 #include <fstream>
 #include <string>
 
+#include "ml_model.hpp"
 #include "ml_stat.hpp"
+
+#ifndef STAT_TYPE
+#define WAIT 0
+#define COMPUTE 1
+#define PUSH 2
+#define RELAY 3
+#endif
 
 utils::ml_timer_t::ml_timer_t() : relay_start(0), relay_end(0),
 				  compute_start(0), compute_end(0),
@@ -18,11 +26,6 @@ utils::ml_timer_t::ml_timer_t() : relay_start(0), relay_end(0),
 				  wait_total_comthread(0),
 				  wait_total_netthread(0) {
 }
-
-#define WAIT 0
-#define COMPUTE 1
-#define PUSH 2
-#define RELAY 3
 
 void utils::ml_timer_t::set_start_time() {
   clock_gettime(CLOCK_REALTIME, &start_time);
@@ -61,12 +64,14 @@ void utils::ml_timer_t::set_wait_end(int thread) {
   if(thread == COMPUTE_THREAD) {
     wait_end_comthread = (end_time.tv_sec - start_time.tv_sec) * 1e9
       + (end_time.tv_nsec - start_time.tv_nsec);
-    op_time_log_q_compute.push({{wait_start_comthread, wait_end_comthread}, WAIT});
+    op_time_log_q_compute.push({{wait_start_comthread, wait_end_comthread},
+				WAIT});
     wait_total_comthread += wait_end_comthread - wait_start_comthread;
   } else if(thread == NETWORK_THREAD) {
     wait_end_netthread = (end_time.tv_sec - start_time.tv_sec) * 1e9
       + (end_time.tv_nsec - start_time.tv_nsec);
-    op_time_log_q_network.push({{wait_start_netthread, wait_end_netthread}, WAIT});
+    op_time_log_q_network.push({{wait_start_netthread, wait_end_netthread},
+				WAIT});
     wait_total_netthread += wait_end_netthread - wait_start_netthread;
   } else {
     std::cerr << "Wrong input " << thread << std::endl;
@@ -139,7 +144,8 @@ void utils::ml_timer_t::set_train_start() {
 
 void utils::ml_timer_t::set_train_end() {
   clock_gettime(CLOCK_REALTIME, &train_end_time);
-  train_time_taken = (double)(train_end_time.tv_sec - train_start_time.tv_sec)
+  train_time_taken = (double)(train_end_time.tv_sec -
+			      train_start_time.tv_sec)
     + (train_end_time.tv_nsec - train_start_time.tv_nsec) / 1e9;
 }
 
@@ -172,7 +178,7 @@ utils::ml_stat_t::ml_stat_t(uint32_t num_nodes, uint32_t num_epochs) :
 utils::ml_stat_t::ml_stat_t(uint32_t trial_num, uint32_t num_nodes,
 	       uint32_t num_epochs, double alpha,
 	      double decay, double batch_size, const uint32_t node_rank,
-              const sst::MLSST& ml_sst,
+              const sst::MLSST* ml_sst,
               ml_model::ml_model* ml_model)
         : trial_num(trial_num),
           num_nodes(num_nodes),
@@ -185,8 +191,10 @@ utils::ml_stat_t::ml_stat_t(uint32_t trial_num, uint32_t num_nodes,
           intermediate_models(num_epochs + 1),
           cumulative_num_broadcasts(num_epochs + 1, 0),
           num_model_updates(num_epochs + 1, 0),
-          num_gradients_received(num_epochs + 1, std::vector<double>(num_nodes, 0)),
-	  num_lost_gradients(num_epochs + 1, std::vector<double>(num_nodes, 0)),
+          num_gradients_received(num_epochs + 1,
+				 std::vector<double>(num_nodes, 0)),
+	  num_lost_gradients(num_epochs + 1,
+			     std::vector<double>(num_nodes, 0)),
           cumulative_time(num_epochs + 1, 0),
           training_error(num_epochs + 1, 0),
           test_error(num_epochs + 1, 0),
@@ -195,8 +203,7 @@ utils::ml_stat_t::ml_stat_t(uint32_t trial_num, uint32_t num_nodes,
           grad_norm(num_epochs + 1, 0),
 	  num_lost_gradients_per_node(num_nodes, 0),
 	  timer(),
-	  num_broadcasts(0)
-{
+	  num_broadcasts(0) {
     if (node_rank == 0) {
       for(uint epoch_num = 0; epoch_num < num_epochs + 1; ++epoch_num) {
         intermediate_models[epoch_num] = new double[model_size];
@@ -210,20 +217,24 @@ utils::ml_stat_t::ml_stat_t(uint32_t trial_num, uint32_t num_nodes,
 }
 
 void utils::ml_stat_t::set_epoch_parameters(
-		  uint32_t epoch_num, double* model, const sst::MLSST& ml_sst) {
+		  uint32_t epoch_num,
+		  double* model,
+		  const sst::MLSST* ml_sst) {
     for(size_t i = 0; i < model_size; ++i) {
         intermediate_models[epoch_num][i] = model[i];
     }
     if (epoch_num == 0) {
       cumulative_time[epoch_num] = 0.0;
     } else {
-      cumulative_time[epoch_num] = cumulative_time[epoch_num-1] + timer.train_time_taken;
+      cumulative_time[epoch_num] =
+	cumulative_time[epoch_num-1] + timer.train_time_taken;
     }
     cumulative_num_broadcasts[epoch_num] = num_broadcasts;
-    num_model_updates[epoch_num] = ml_sst.round[0];
+    num_model_updates[epoch_num] = ml_sst->get_latest_model_version_num();
     for(uint node_num = 1; node_num < num_nodes; ++node_num) {
       num_gradients_received[epoch_num][node_num] = 0; // For debugging
-      num_gradients_received[epoch_num][node_num] = ml_sst.round[node_num];
+      num_gradients_received[epoch_num][node_num] =
+	ml_sst->get_latest_gradient_version_num(node_num);
         num_gradients_received[epoch_num][0] +=
 	  num_gradients_received[epoch_num][node_num];
 	this->num_lost_gradients[epoch_num][node_num] =
@@ -233,13 +244,16 @@ void utils::ml_stat_t::set_epoch_parameters(
     }
 }
 
-void utils::ml_stat_t::collect_results(uint32_t epoch_num, ml_model::ml_model* ml_model, std::string ml_model_name) {
+void utils::ml_stat_t::collect_results(uint32_t epoch_num,
+				       ml_model::ml_model* ml_model,
+				       std::string ml_model_name) {
     ml_model->set_model_mem(intermediate_models[epoch_num]);
     training_error[epoch_num] = ml_model->training_error();
     test_error[epoch_num] = ml_model->test_error();
     
     if (ml_model_name == "log_reg") {
-      loss_gap[epoch_num] = ml_model->training_loss() - ml_model->get_loss_opt();
+      loss_gap[epoch_num] = ml_model->training_loss() -
+	                              ml_model-> get_loss_opt();
       dist_to_opt[epoch_num] = ml_model->distance_to_optimum();
       grad_norm[epoch_num] = ml_model->gradient_norm();
     } else if (ml_model_name == "dnn") {
@@ -248,10 +262,28 @@ void utils::ml_stat_t::collect_results(uint32_t epoch_num, ml_model::ml_model* m
       dist_to_opt[epoch_num] = 0;
       grad_norm[epoch_num] = 0;
     } else {
-      std::cerr << "BUG: WRONG INPUT:" << ml_model_name << std::endl;
+      std::cerr << "ERROR: WRONG INPUT:" << ml_model_name << std::endl;
       exit(1);
     }
 }
+
+void utils::ml_stat_t::log_num_lost_gradients(int node_id,
+					      int sgd_type,
+					      sst::MLSST* ml_sst) {
+  if(sgd_type == SYNC) {
+    num_lost_gradients_per_node[node_id] += 0;
+  } else if(sgd_type == ASYNC) {
+    if(ml_sst->has_gradient_loss(node_id)) {
+	num_lost_gradients_per_node[node_id] +=
+	  ml_sst->get_num_lost_gradient(node_id);
+    }
+  } else {
+    std::cout << "TODO: log_num_lost_gradients() \
+                  not implemented yet" << std::endl;
+    exit(1);
+  }
+}
+
 
 void utils::ml_stat_t::print_results() {
   std::cout << "trial_num " << trial_num << std::endl;
@@ -260,9 +292,12 @@ void utils::ml_stat_t::print_results() {
   std::cout << "alpha " << alpha << std::endl;
   std::cout << "decay " << decay << std::endl;
   std::cout << "batch_size " << batch_size << std::endl;
-  std::cout << "time_taken " << cumulative_time[num_epochs] << "s" << std::endl;
-  std::cout << "training_accuracy " << 100 * (1 - training_error[num_epochs]) << std::endl;
-  std::cout << "test_accuracy " << 100 * (1 - test_error[num_epochs]) << std::endl;
+  std::cout << "time_taken " << cumulative_time[num_epochs] << "s"
+	    << std::endl;
+  std::cout << "training_accuracy "
+	    << 100 * (1 - training_error[num_epochs]) << std::endl;
+  std::cout << "test_accuracy "
+	    << 100 * (1 - test_error[num_epochs]) << std::endl;
   std::cout << "loss_gap " << loss_gap[num_epochs] << std::endl;
   std::cout << "dist_to_opt " << dist_to_opt[num_epochs] << std::endl;
   std::cout << "grad_norm " << grad_norm[num_epochs] << std::endl;
@@ -385,32 +420,38 @@ void utils::ml_stat_t::fout_op_time_log(bool is_server, bool is_fully_async) {
     }
   } else {
     if(!is_fully_async) {
-      log_file.open("worker" + std::to_string(node_rank) + ".log", std::ofstream::trunc);
+      log_file.open("worker" + std::to_string(node_rank) + ".log",
+		    std::ofstream::trunc);
     } else {
-      log_file_front.open("worker_compute" + std::to_string(node_rank) + ".log",
+      log_file_front.open("worker_compute" + std::to_string(node_rank) +
+			  ".log",
 			  std::ofstream::trunc);
-      log_file_back.open("worker_network" + std::to_string(node_rank) + ".log",
+      log_file_back.open("worker_network" + std::to_string(node_rank) +
+			 ".log",
 			 std::ofstream::trunc);
     }
   }
 
   if(!is_fully_async) {
     while (!timer.op_time_log_q.empty()) {
-      std::pair<std::pair<uint64_t, uint64_t>, uint32_t> item = timer.op_time_log_q.front();
+      std::pair<std::pair<uint64_t, uint64_t>, uint32_t> item =
+	timer.op_time_log_q.front();
       timer.op_time_log_q.pop();
       log_file <<  item.first.first << " " << item.first.second << " "
 	       << item.second << std::endl;
     }
   } else {
     while (!timer.op_time_log_q_compute.empty()) {
-      std::pair<std::pair<uint64_t, uint64_t>, uint32_t> item = timer.op_time_log_q_compute.front();
+      std::pair<std::pair<uint64_t, uint64_t>, uint32_t> item =
+	timer.op_time_log_q_compute.front();
       timer.op_time_log_q_compute.pop();
       log_file_front <<  item.first.first << " " << item.first.second << " "
 		     << item.second << std::endl;
     }
   
     while (!timer.op_time_log_q_network.empty()) {
-      std::pair<std::pair<uint64_t, uint64_t>, uint32_t> item = timer.op_time_log_q_network.front();
+      std::pair<std::pair<uint64_t, uint64_t>, uint32_t> item =
+	timer.op_time_log_q_network.front();
       timer.op_time_log_q_network.pop();
       log_file_back <<  item.first.first << " " << item.first.second << " "
 		    << item.second << std::endl;
@@ -419,18 +460,27 @@ void utils::ml_stat_t::fout_op_time_log(bool is_server, bool is_fully_async) {
   
   if (!is_server) {
     if (!is_fully_async) {
-      std::ofstream worker_stat_file("worker" + std::to_string(node_rank) + ".stat",
+      std::ofstream worker_stat_file("worker" + std::to_string(node_rank) +
+				     ".stat",
 				     std::ofstream::trunc);
-      uint64_t total = timer.relay_total + timer.compute_total + timer.push_total + timer.wait_total;
-      worker_stat_file <<  "relay " << "compute " << "push " << "wait " << "total " << std::endl;
-      worker_stat_file <<  timer.relay_total << " " << timer.compute_total << " "
-		       << timer.push_total << " " << timer.wait_total << " " << total << std::endl;
-      worker_stat_file <<  float(timer.relay_total)/total << " " << float(timer.compute_total)/total << " "
-		       << float(timer.push_total)/total << " " << float(timer.wait_total)/total << " " << total << std::endl;
+      uint64_t total = timer.relay_total + timer.compute_total +
+	timer.push_total + timer.wait_total;
+      worker_stat_file <<  "relay " << "compute "
+		       << "push " << "wait " << "total " << std::endl;
+      worker_stat_file <<  timer.relay_total << " " << timer.compute_total
+		       << " " << timer.push_total << " " << timer.wait_total
+		       << " " << total << std::endl;
+      worker_stat_file <<  float(timer.relay_total)/total << " "
+		       << float(timer.compute_total)/total << " "
+		       << float(timer.push_total)/total << " "
+		       << float(timer.wait_total)/total << " "
+		       << total << std::endl;
     } else {
-      std::ofstream worker_stat_file("worker" + std::to_string(node_rank) + ".stat",
+      std::ofstream worker_stat_file("worker" + std::to_string(node_rank) +
+				     ".stat",
 				     std::ofstream::trunc);
-      worker_stat_file <<  "compute " << "compute_wait " << "push " << "push_wait " << std::endl;
+      worker_stat_file <<  "compute " << "compute_wait "
+		       << "push " << "push_wait " << std::endl;
       worker_stat_file  << timer.compute_total << " "
 			<< timer.wait_total_comthread << " "
 			<< timer.push_total << " "
@@ -456,19 +506,32 @@ void utils::ml_stats_t::compute_mean() {
     
   for (uint epoch_num = 0; epoch_num < num_epochs + 1; ++epoch_num) {
     for (uint trial_num = 0; trial_num < num_trials; ++trial_num) {
-      mean.cumulative_time[epoch_num] += ml_stat_vec[trial_num].cumulative_time[epoch_num] / num_trials;
-      mean.training_error[epoch_num] += ml_stat_vec[trial_num].training_error[epoch_num] / num_trials;
-      mean.test_error[epoch_num] += ml_stat_vec[trial_num].test_error[epoch_num] / num_trials;
-      mean.loss_gap[epoch_num] += ml_stat_vec[trial_num].loss_gap[epoch_num] / num_trials;
-      mean.dist_to_opt[epoch_num] += ml_stat_vec[trial_num].dist_to_opt[epoch_num] / num_trials;
-      mean.grad_norm[epoch_num] += ml_stat_vec[trial_num].grad_norm[epoch_num] / num_trials;
+      mean.cumulative_time[epoch_num] +=
+	ml_stat_vec[trial_num].cumulative_time[epoch_num] / num_trials;
+      mean.training_error[epoch_num] +=
+	ml_stat_vec[trial_num].training_error[epoch_num] / num_trials;
+      mean.test_error[epoch_num] +=
+	ml_stat_vec[trial_num].test_error[epoch_num] / num_trials;
+      mean.loss_gap[epoch_num] +=
+	ml_stat_vec[trial_num].loss_gap[epoch_num] / num_trials;
+      mean.dist_to_opt[epoch_num] +=
+	ml_stat_vec[trial_num].dist_to_opt[epoch_num] / num_trials;
+      mean.grad_norm[epoch_num] +=
+	ml_stat_vec[trial_num].grad_norm[epoch_num] / num_trials;
 
-      mean.cumulative_num_broadcasts[epoch_num] += ml_stat_vec[trial_num].cumulative_num_broadcasts[epoch_num] / num_trials;
-      mean.num_model_updates[epoch_num] += ml_stat_vec[trial_num].num_model_updates[epoch_num] / num_trials;
+      mean.cumulative_num_broadcasts[epoch_num] +=
+	ml_stat_vec[trial_num].cumulative_num_broadcasts[epoch_num] /
+	num_trials;
+      mean.num_model_updates[epoch_num] +=
+	ml_stat_vec[trial_num].num_model_updates[epoch_num] / num_trials;
 
       for (uint node_num = 0; node_num < num_nodes; ++node_num) {
-      	mean.num_gradients_received[epoch_num][node_num] += ml_stat_vec[trial_num].num_gradients_received[epoch_num][node_num] / num_trials;
-      	mean.num_lost_gradients[epoch_num][node_num] += ml_stat_vec[trial_num].num_lost_gradients[epoch_num][node_num] / num_trials;
+      	mean.num_gradients_received[epoch_num][node_num] +=
+	  ml_stat_vec[trial_num]
+	  .num_gradients_received[epoch_num][node_num] / num_trials;
+      	mean.num_lost_gradients[epoch_num][node_num] +=
+	  ml_stat_vec[trial_num]
+	  .num_lost_gradients[epoch_num][node_num] / num_trials;
       }
     }
   }
@@ -483,43 +546,69 @@ void utils::ml_stats_t::compute_std() {
   for (uint epoch_num = 0; epoch_num < num_epochs + 1; ++epoch_num) {
     for (uint trial_num = 0; trial_num < num_trials; ++trial_num) {
   	std.cumulative_time[epoch_num]
-  	  += std::pow((ml_stat_vec[trial_num].cumulative_time[epoch_num] - mean.cumulative_time[epoch_num]), 2);
+  	  += std::pow((ml_stat_vec[trial_num].cumulative_time[epoch_num] -
+		       mean.cumulative_time[epoch_num]), 2);
   	std.training_error[epoch_num]
-  	  += std::pow((ml_stat_vec[trial_num].training_error[epoch_num] - mean.training_error[epoch_num]), 2);
+  	  += std::pow((ml_stat_vec[trial_num].training_error[epoch_num] -
+		       mean.training_error[epoch_num]), 2);
   	std.test_error[epoch_num]
-  	  += std::pow((ml_stat_vec[trial_num].test_error[epoch_num] - mean.test_error[epoch_num]), 2);
+  	  += std::pow((ml_stat_vec[trial_num].test_error[epoch_num] -
+		       mean.test_error[epoch_num]), 2);
   	std.loss_gap[epoch_num]
-  	  += std::pow((ml_stat_vec[trial_num].loss_gap[epoch_num] - mean.loss_gap[epoch_num]), 2);
+  	  += std::pow((ml_stat_vec[trial_num].loss_gap[epoch_num] -
+		       mean.loss_gap[epoch_num]), 2);
   	std.dist_to_opt[epoch_num]
-  	  += std::pow((ml_stat_vec[trial_num].dist_to_opt[epoch_num] - mean.dist_to_opt[epoch_num]), 2);
+  	  += std::pow((ml_stat_vec[trial_num].dist_to_opt[epoch_num] -
+		       mean.dist_to_opt[epoch_num]), 2);
   	std.grad_norm[epoch_num]
-  	  += std::pow((ml_stat_vec[trial_num].grad_norm[epoch_num] - mean.grad_norm[epoch_num]), 2);
+  	  += std::pow((ml_stat_vec[trial_num].grad_norm[epoch_num] -
+		       mean.grad_norm[epoch_num]), 2);
 
   	std.cumulative_num_broadcasts[epoch_num]
-  	  += std::pow((ml_stat_vec[trial_num].cumulative_num_broadcasts[epoch_num] - mean.cumulative_num_broadcasts[epoch_num]), 2);
+  	  += std::pow(
+	     (ml_stat_vec[trial_num].cumulative_num_broadcasts[epoch_num] -               mean.cumulative_num_broadcasts[epoch_num]), 2);
   	std.num_model_updates[epoch_num]
-  	  += std::pow((ml_stat_vec[trial_num].num_model_updates[epoch_num] - mean.num_model_updates[epoch_num]), 2);
+  	  += std::pow(
+	     (ml_stat_vec[trial_num].num_model_updates[epoch_num] -
+	      mean.num_model_updates[epoch_num]), 2);
   	for (uint node_num = 0; node_num < num_nodes; ++node_num) {
   	  std.num_gradients_received[epoch_num][node_num]
-  	    += std::pow((ml_stat_vec[trial_num].num_gradients_received[epoch_num][node_num] - mean.num_gradients_received[epoch_num][node_num]), 2);
+  	    += std::pow(
+               (ml_stat_vec[trial_num]
+		.num_gradients_received[epoch_num][node_num] -
+		mean.num_gradients_received[epoch_num][node_num]), 2);
   	  std.num_lost_gradients[epoch_num][node_num]
-  	    += std::pow((ml_stat_vec[trial_num].num_lost_gradients[epoch_num][node_num] - mean.num_lost_gradients[epoch_num][node_num]), 2);
+  	    += std::pow((ml_stat_vec[trial_num]
+			 .num_lost_gradients[epoch_num][node_num] -
+			 mean.num_lost_gradients[epoch_num][node_num]), 2);
   	}
     }
   }
 
   for (uint epoch_num = 0; epoch_num < num_epochs + 1; ++epoch_num) {
-    std.cumulative_time[epoch_num] = std::sqrt(std.cumulative_time[epoch_num] / num_trials);
-    std.training_error[epoch_num] = std::sqrt(std.training_error[epoch_num] / num_trials);
-    std.test_error[epoch_num] = std::sqrt(std.test_error[epoch_num] / num_trials);
-    std.loss_gap[epoch_num] = std::sqrt(std.loss_gap[epoch_num] / num_trials);
-    std.dist_to_opt[epoch_num] = std::sqrt(std.dist_to_opt[epoch_num] / num_trials);
-    std.grad_norm[epoch_num] = std::sqrt(std.grad_norm[epoch_num] / num_trials);
-    std.cumulative_num_broadcasts[epoch_num] = std::sqrt(std.cumulative_num_broadcasts[epoch_num] / num_trials);
-    std.num_model_updates[epoch_num] = std::sqrt(std.num_model_updates[epoch_num] / num_trials);
+    std.cumulative_time[epoch_num] =
+      std::sqrt(std.cumulative_time[epoch_num] / num_trials);
+    std.training_error[epoch_num] =
+      std::sqrt(std.training_error[epoch_num] / num_trials);
+    std.test_error[epoch_num] =
+      std::sqrt(std.test_error[epoch_num] / num_trials);
+    std.loss_gap[epoch_num] =
+      std::sqrt(std.loss_gap[epoch_num] / num_trials);
+    std.dist_to_opt[epoch_num] =
+      std::sqrt(std.dist_to_opt[epoch_num] / num_trials);
+    std.grad_norm[epoch_num] =
+      std::sqrt(std.grad_norm[epoch_num] / num_trials);
+    std.cumulative_num_broadcasts[epoch_num] =
+      std::sqrt(std.cumulative_num_broadcasts[epoch_num] / num_trials);
+    std.num_model_updates[epoch_num] =
+      std::sqrt(std.num_model_updates[epoch_num] / num_trials);
     for (uint node_num = 0; node_num < num_nodes; ++node_num) {
-      std.num_gradients_received[epoch_num][node_num] = std::sqrt(std.num_gradients_received[epoch_num][node_num] / num_trials);
-      std.num_lost_gradients[epoch_num][node_num] = std::sqrt(std.num_lost_gradients[epoch_num][node_num] / num_trials);
+      std.num_gradients_received[epoch_num][node_num] =
+	std::sqrt(std.num_gradients_received[epoch_num][node_num] /
+		  num_trials);
+      std.num_lost_gradients[epoch_num][node_num] =
+	std::sqrt(std.num_lost_gradients[epoch_num][node_num] /
+		  num_trials);
     }
   }
 }
@@ -533,17 +622,31 @@ void utils::ml_stats_t::compute_err() {
   // 95% confidence error
   double confidence_num = 1.960;
   for (uint epoch_num = 0; epoch_num < num_epochs + 1; ++epoch_num) {
-    err.cumulative_time[epoch_num] = confidence_num * std.cumulative_time[epoch_num] / std::sqrt(num_trials);
-    err.training_error[epoch_num] = confidence_num * std.training_error[epoch_num] / std::sqrt(num_trials);
-    err.test_error[epoch_num] = confidence_num * std.test_error[epoch_num] / std::sqrt(num_trials);
-    err.loss_gap[epoch_num] = confidence_num * std.loss_gap[epoch_num] / std::sqrt(num_trials);
-    err.dist_to_opt[epoch_num] = confidence_num * std.dist_to_opt[epoch_num] / std::sqrt(num_trials);
-    err.grad_norm[epoch_num] = confidence_num * std.grad_norm[epoch_num] / std::sqrt(num_trials);
-    err.cumulative_num_broadcasts[epoch_num] = confidence_num * std.cumulative_num_broadcasts[epoch_num] / std::sqrt(num_trials);
-    err.num_model_updates[epoch_num] = confidence_num * std.num_model_updates[epoch_num] / std::sqrt(num_trials);
+    err.cumulative_time[epoch_num] =
+    confidence_num * std.cumulative_time[epoch_num] / std::sqrt(num_trials);
+    err.training_error[epoch_num] =
+     confidence_num * std.training_error[epoch_num] / std::sqrt(num_trials);
+    err.test_error[epoch_num] =
+      confidence_num * std.test_error[epoch_num] / std::sqrt(num_trials);
+    err.loss_gap[epoch_num] =
+      confidence_num * std.loss_gap[epoch_num] / std::sqrt(num_trials);
+    err.dist_to_opt[epoch_num] =
+      confidence_num * std.dist_to_opt[epoch_num] / std::sqrt(num_trials);
+    err.grad_norm[epoch_num] =
+      confidence_num * std.grad_norm[epoch_num] / std::sqrt(num_trials);
+    err.cumulative_num_broadcasts[epoch_num] =
+      confidence_num * std.cumulative_num_broadcasts[epoch_num] /
+      std::sqrt(num_trials);
+    err.num_model_updates[epoch_num] =
+      confidence_num * std.num_model_updates[epoch_num] /
+      std::sqrt(num_trials);
     for (uint node_num = 0; node_num < num_nodes; ++node_num) {
-      err.num_gradients_received[epoch_num][node_num] = confidence_num * std.num_gradients_received[epoch_num][node_num] / std::sqrt(num_trials);
-      err.num_lost_gradients[epoch_num][node_num] = confidence_num * std.num_lost_gradients[epoch_num][node_num] / std::sqrt(num_trials);
+      err.num_gradients_received[epoch_num][node_num] =
+	confidence_num * std.num_gradients_received[epoch_num][node_num] /
+	std::sqrt(num_trials);
+      err.num_lost_gradients[epoch_num][node_num] =
+	confidence_num * std.num_lost_gradients[epoch_num][node_num] /
+	std::sqrt(num_trials);
     }
   }
 }
@@ -558,9 +661,11 @@ void utils::ml_stats_t::grid_search_helper(std::string target_dir) {
   double decay = ml_stat_vec[0].decay;
   std::string worker_dir = std::to_string(num_nodes - 1) + "workers";
   try {
-    prev_loss_opt_file.open(target_dir + "/" + worker_dir + "/sgd_loss_opt.txt");
+    prev_loss_opt_file.open(target_dir + "/" + worker_dir +
+			    "/sgd_loss_opt.txt");
   } catch (std::ifstream::failure e) {
-    std::cerr << "File open error: " + target_dir + "/" + worker_dir + "/sgd_loss_opt.txt" << std::endl;
+    std::cerr << "File open error: " + target_dir + "/" + worker_dir +
+      "/sgd_loss_opt.txt" << std::endl;
     exit(1);
   }
   std::string prev_loss_opt_str;
@@ -573,17 +678,23 @@ void utils::ml_stats_t::grid_search_helper(std::string target_dir) {
     std::cout << "cur_loss " << cur_loss
 	      << " < prev_loss_opt " << prev_loss_opt << std::endl;
     std::cout << "Found better alpha " << alpha << " decay " << decay
-	      << " and aggregate_batch_size " << aggregate_batch_size << std::endl;
+	      << " and aggregate_batch_size " << aggregate_batch_size
+	      << std::endl;
       
-    std::ofstream sgd_alpha_opt_file(target_dir + "/" + worker_dir + "/sgd_alpha_opt.txt");
+    std::ofstream sgd_alpha_opt_file(target_dir + "/" + worker_dir +
+				     "/sgd_alpha_opt.txt");
     sgd_alpha_opt_file << alpha;
-    std::ofstream sgd_decay_opt_file(target_dir + "/" + worker_dir + "/sgd_decay_opt.txt");
+    std::ofstream sgd_decay_opt_file(target_dir + "/" + worker_dir +
+				     "/sgd_decay_opt.txt");
     sgd_decay_opt_file << decay;
-    std::ofstream sgd_batch_opt_file(target_dir + "/" + worker_dir + "/sgd_batch_opt.txt");
+    std::ofstream sgd_batch_opt_file(target_dir + "/" + worker_dir +
+				     "/sgd_batch_opt.txt");
     sgd_batch_opt_file << aggregate_batch_size;
-    std::ofstream sgd_epoch_opt_file(target_dir + "/" + worker_dir + "/sgd_epoch_opt.txt");
+    std::ofstream sgd_epoch_opt_file(target_dir + "/" + worker_dir +
+				     "/sgd_epoch_opt.txt");
     sgd_epoch_opt_file << num_epochs;
-    std::ofstream sgd_loss_opt_file(target_dir + "/" + worker_dir + "/sgd_loss_opt.txt");
+    std::ofstream sgd_loss_opt_file(target_dir + "/" + worker_dir +
+				    "/sgd_loss_opt.txt");
     sgd_loss_opt_file << cur_loss;
   } else {
     std::cout << "cur_loss " << cur_loss
@@ -600,7 +711,8 @@ double utils::ml_stats_t::get_loss_opt(std::string target_dir) {
   try {
     loss_opt_file.open(target_dir + "/svrg_loss_opt.txt");
   } catch (std::ifstream::failure e) {
-    std::cerr << "File open error: " + target_dir + "/svrg_loss_opt.txt" << std::endl;
+    std::cerr << "File open error: " + target_dir +
+      "/svrg_loss_opt.txt" << std::endl;
     exit(1);
   }
   std::string loss_opt_str;
@@ -700,7 +812,8 @@ void utils::ml_stats_t::fout_analysis_mean_per_epoch() {
   double decay = ml_stat_vec[0].decay;
   uint batch_size = ml_stat_vec[0].batch_size;
 
-  std::ofstream analysis_mean_file("RDMAwild.analysis.mean", std::ofstream::app);
+  std::ofstream analysis_mean_file("RDMAwild.analysis.mean",
+				   std::ofstream::app);
   analysis_mean_file << "num_trials "
 		     << "num_workers "
 		     << "num_epochs "
@@ -737,7 +850,8 @@ void utils::ml_stats_t::fout_analysis_err_per_epoch() {
   double decay = ml_stat_vec[0].decay;
   uint batch_size = ml_stat_vec[0].batch_size;
   
-  std::ofstream analysis_err_file("RDMAwild.analysis.err", std::ofstream::app);
+  std::ofstream analysis_err_file("RDMAwild.analysis.err",
+				  std::ofstream::app);
   analysis_err_file << "num_trials "
 		    << "num_workers "
 		    << "num_epochs "
@@ -803,10 +917,12 @@ void utils::ml_stats_t::fout_gradients_mean_per_epoch() {
 			<< batch_size << " "
 			<< epoch_num << " ";
     for (uint node_num = 0; node_num < num_nodes; ++node_num) {
-      gradients_mean_file << mean.num_lost_gradients[epoch_num][node_num] << " ";
+      gradients_mean_file
+	<< mean.num_lost_gradients[epoch_num][node_num] << " ";
     }
     for (uint node_num = 0; node_num < num_nodes; ++node_num) {
-      gradients_mean_file << mean.num_gradients_received[epoch_num][node_num] << " ";
+      gradients_mean_file
+	<< mean.num_gradients_received[epoch_num][node_num] << " ";
     }
     gradients_mean_file << std::endl;
   }
@@ -850,10 +966,12 @@ void utils::ml_stats_t::fout_gradients_err_per_epoch() {
 		       << batch_size << " "
 		       << epoch_num << " ";
     for (uint node_num = 0; node_num < num_nodes; ++node_num) {
-      gradients_err_file << err.num_lost_gradients[epoch_num][node_num] << " ";
+      gradients_err_file
+	<< err.num_lost_gradients[epoch_num][node_num] << " ";
     }
     for (uint node_num = 0; node_num < num_nodes; ++node_num) {
-      gradients_err_file << err.num_gradients_received[epoch_num][node_num] << " ";
+      gradients_err_file
+	<< err.num_gradients_received[epoch_num][node_num] << " ";
     }
     gradients_err_file << std::endl;
   }

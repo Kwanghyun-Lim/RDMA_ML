@@ -14,20 +14,22 @@ namespace server {
 class server {
 public:
   server(ml_model::ml_model* ml_model,
-	 sst::MLSST& ml_sst, utils::ml_stat_t& ml_stat);
+	 sst::MLSST* ml_sst,
+	 utils::ml_stat_t& ml_stat);
 
   virtual void train(const size_t num_epochs);
   
 protected:
   ml_model::ml_model* ml_model;
-  sst::MLSST& ml_sst;
+  sst::MLSST* ml_sst;
   utils::ml_stat_t& ml_stat;
 };
   
 class sync_server: public server {
 public:
   sync_server(ml_model::ml_model* ml_model,
-	      sst::MLSST& ml_sst, utils::ml_stat_t& ml_stat);
+	      sst::MLSST* ml_sst,
+	      utils::ml_stat_t& ml_stat);
 
   void train(const size_t num_epochs);
   ~sync_server();
@@ -36,7 +38,8 @@ public:
 class async_server: public server {
 public:
   async_server(ml_model::ml_model* ml_model,
-	       sst::MLSST& ml_sst, utils::ml_stat_t& ml_stat);
+	       sst::MLSST* ml_sst,
+	       utils::ml_stat_t& ml_stat);
 
   void train(const size_t num_epochs);
   ~async_server();
@@ -45,7 +48,8 @@ public:
 class fully_async_server: public server {
 public:
   fully_async_server(ml_model::ml_model* ml_model,
-	       sst::MLSST& ml_sst, utils::ml_stat_t& ml_stat);
+		     sst::MLSST* ml_sst,
+		     utils::ml_stat_t& ml_stat);
 
   void train(const size_t num_epochs);
   ~fully_async_server();

@@ -14,7 +14,7 @@ namespace worker {
 class worker {
 public:
   worker(ml_model::ml_model* ml_model,
-		 sst::MLSST& ml_sst,
+		 sst::MLSST* ml_sst,
 		 utils::ml_stat_t& ml_stat,
 		 const uint32_t node_rank);
 
@@ -22,7 +22,7 @@ public:
   
 protected:
   ml_model::ml_model* ml_model;
-  sst::MLSST& ml_sst;
+  sst::MLSST* ml_sst;
   utils::ml_stat_t& ml_stat;
   const uint32_t node_rank;
 };
@@ -30,7 +30,7 @@ protected:
 class sync_worker: public worker {
 public:
   sync_worker(ml_model::ml_model* ml_model,
-		 sst::MLSST& ml_sst,
+		 sst::MLSST* ml_sst,
 		 utils::ml_stat_t& ml_stat,
 		 const uint32_t node_rank);
 
@@ -41,7 +41,7 @@ public:
 class async_worker: public worker {
 public:
   async_worker(ml_model::ml_model* ml_model,
-		 sst::MLSST& ml_sst,
+		 sst::MLSST* ml_sst,
 		 utils::ml_stat_t& ml_stat,
 		 const uint32_t node_rank);
 
@@ -52,7 +52,7 @@ public:
 class fully_async_worker: public worker {
 public:
   fully_async_worker(ml_model::ml_model* ml_model,
-		 sst::MLSST& ml_sst,
+		 sst::MLSST* ml_sst,
 		 utils::ml_stat_t& ml_stat,
 		 const uint32_t node_rank);
 

@@ -1,10 +1,10 @@
-#include "utils.hpp"
-
 #include <cblas.h>
-#define _USE_MATH_DEFINES  // this is for PI in cmath
 #include <cmath>
 #include <iostream>
 #include <random>
+
+#include "utils.hpp"
+#define _USE_MATH_DEFINES  // this is for PI in cmath
 
 void utils::zero_arr(double* arr, const size_t size) {
     for(size_t i = 0; i < size; ++i, ++arr) {

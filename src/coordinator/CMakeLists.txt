@@ -9,4 +9,4 @@ add_library(coordinator
   connection_manager.h connection_manager.cpp
   ml_sst.hpp ml_sst.cpp)
 target_include_directories(coordinator PUBLIC ${RDMA_ML_SOURCE_DIR})
-target_link_libraries(coordinator RDMA_ML ibverbs rdmacm pthread)
+target_link_libraries(coordinator RDMA_ML utils ibverbs rdmacm pthread)

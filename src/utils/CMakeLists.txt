@@ -6,4 +6,5 @@ add_library(utils SHARED
   cnpy.hpp cnpy.cpp
   numpy_reader.hpp numpy_reader.cpp)
 target_include_directories(utils PUBLIC ${RDMA_ML_SOURCE_DIR})
+# target_link_libraries(utils PUBLIC openblas)
 target_link_libraries(utils PUBLIC openblas)
