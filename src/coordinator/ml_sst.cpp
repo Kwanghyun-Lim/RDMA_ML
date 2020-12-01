@@ -6,11 +6,11 @@
 #include "utils/utils.hpp"
 
 sst::MLSST::MLSST(const bool has_buf,
-		  const int my_node_id,
+		  const int my_rank,
 		  const int num_nodes,
 		  ml_model::ml_model* ml_model)
   : has_buf(has_buf),
-    my_node_id(my_node_id),
+    my_rank(my_rank),
     num_nodes(num_nodes),
     ml_model(ml_model) {
 }
@@ -20,8 +20,8 @@ const bool sst::MLSST::get_has_buf() const {
   return has_buf;
 };
 
-const int sst::MLSST::get_my_node_id() const {
-  return my_node_id;
+const int sst::MLSST::get_my_rank() const {
+  return my_rank;
 };
 
 const int sst::MLSST::get_num_nodes() const {
@@ -33,16 +33,51 @@ const ml_model::ml_model* sst::MLSST::get_ml_model_ptr() const {
 };
 
 sst::MLSST_NOBUF::MLSST_NOBUF(const std::vector<uint32_t>& members,
-			      const uint32_t my_node_id,
+			      const uint32_t my_rank,
 			      const size_t num_params,
 			      const uint32_t num_nodes,
 			      ml_model::ml_model* ml_model)
-  : MLSST(false, my_node_id, num_nodes, ml_model),
-    sst::SST<MLSST_NOBUF>(this, SSTParams{members, my_node_id}),
+  : MLSST(false, my_rank, num_nodes, ml_model),
+    sst::SST<MLSST_NOBUF>(this, SSTParams{members, my_rank}),
     model_or_gradient(num_params),
     last_round(num_nodes) {
     SSTInit(model_or_gradient, round, last_round);
     initialize();
+}
+
+void sst::MLSST_NOBUF::initialize() {
+    uint32_t num_nodes = get_num_nodes();
+    for(uint i = 0; i < num_nodes; ++i) {
+        utils::zero_arr((double*)std::addressof(
+                                model_or_gradient[i][0]),
+                        model_or_gradient.size());
+    }
+    for(uint i = 0; i < num_nodes; ++i) {
+        round[i] = 0;
+    }
+    
+    for(uint i = 0; i < num_nodes; ++i) {
+      for(uint j = 0; j < last_round.size(); ++j) {
+        last_round[i][j] = 0;
+      }
+    }
+
+    std::cout << "has_buffers = " << ml_model->get_has_buffers()
+	      << std::endl;
+    std::cout << "my_rank =" << my_rank << std::endl;
+    std::cout << "num_nodes =" << num_nodes << std::endl;
+    std::cout << "model_size =" << ml_model->get_model_size()
+	      << std::endl;
+    std::cout << "model_or_gradient.size() =" << model_or_gradient.size()
+	      << std::endl;
+    std::cout << "sst = " << std::endl;
+    print();
+    
+    std::cout << "initialize() #1" << std::endl;
+    // put_with_completion();
+    std::cout << "initialize() #2" << std::endl;
+    sync_with_members();
+    std::cout << "initialize() #3" << std::endl;
 }
 
 bool sst::MLSST_NOBUF::has_new_gradient_received(int node_id,
@@ -66,8 +101,8 @@ void sst::MLSST_NOBUF::wait_for_new_model(int sgd_type) {
     while(round[0] < round[1]) { 
     }
   } else {
-    const int my_node_id = get_my_node_id();
-    while (last_round[0][my_node_id] != round[1]) {
+    const int my_rank = get_my_rank();
+    while (last_round[0][my_rank] != round[1]) {
     }
   }
 }
@@ -178,33 +213,13 @@ uint64_t sst::MLSST_NOBUF::get_num_lost_gradient(int node_id) const {
   return round[node_id] - last_round[0][node_id] - 1;
 }
 
-void sst::MLSST_NOBUF::initialize() {
-    uint32_t num_nodes = get_num_nodes();
-    for(uint i = 0; i < num_nodes; ++i) {
-        utils::zero_arr((double*)std::addressof(
-                                model_or_gradient[i][0]),
-                        model_or_gradient.size());
-    }
-    for(uint i = 0; i < num_nodes; ++i) {
-        round[i] = 0;
-    }
-    
-    for(uint i = 0; i < num_nodes; ++i) {
-      for(uint j = 0; j < last_round.size(); ++j) {
-        last_round[i][j] = 0;
-      }
-    }
-    put_with_completion();
-    sync_with_members();
-}
-
 sst::MLSST_BUF::MLSST_BUF(const std::vector<uint32_t>& members,
-			  const uint32_t my_node_id,
+			  const uint32_t my_rank,
 			  const size_t num_params,
 			  const uint32_t num_nodes,
 			  ml_model::ml_model* ml_model)
-  : MLSST(true, my_node_id, num_nodes, ml_model),
-    sst::SST<MLSST_BUF>(this, SSTParams{members, my_node_id}),
+  : MLSST(true, my_rank, num_nodes, ml_model),
+    sst::SST<MLSST_BUF>(this, SSTParams{members, my_rank}),
     model_or_gradient1(num_params),
     last_round1(num_nodes),
     model_or_gradient2(num_params),
@@ -215,6 +230,38 @@ sst::MLSST_BUF::MLSST_BUF(const std::vector<uint32_t>& members,
 	    model_or_gradient2, round2, last_round2,
 	    model_or_gradient3, round3, last_round3);
     initialize();
+}
+
+void sst::MLSST_BUF::initialize() {
+    uint32_t num_nodes = get_num_rows();
+    for(uint i = 0; i < num_nodes; ++i) {
+        utils::zero_arr((double*)std::addressof(
+                                model_or_gradient1[i][0]),
+                        model_or_gradient1.size());
+        utils::zero_arr((double*)std::addressof(
+                                model_or_gradient2[i][0]),
+                        model_or_gradient2.size());
+        utils::zero_arr((double*)std::addressof(
+                                model_or_gradient3[i][0]),
+                        model_or_gradient3.size());
+    }
+    
+    for(uint i = 0; i < num_nodes; ++i) {
+        round1[i] = 0;
+        round2[i] = 0;
+        round3[i] = 0;
+    }
+    
+    for(uint i = 0; i < num_nodes; ++i) {
+      for(uint j = 0; j < last_round1.size(); ++j) {
+        last_round1[i][j] = 0;
+        last_round2[i][j] = 0;
+        last_round3[i][j] = 0;
+      }
+    }
+    
+    put_with_completion();  // end of initialization
+    sync_with_members();
 }
 
 /*** main methods ***/
@@ -368,34 +415,3 @@ uint64_t sst::MLSST_BUF::get_num_lost_gradient(int node_id) const {
   return 1;
 }
 
-void sst::MLSST_BUF::initialize() {
-    uint32_t num_nodes = get_num_rows();
-    for(uint i = 0; i < num_nodes; ++i) {
-        utils::zero_arr((double*)std::addressof(
-                                model_or_gradient1[i][0]),
-                        model_or_gradient1.size());
-        utils::zero_arr((double*)std::addressof(
-                                model_or_gradient2[i][0]),
-                        model_or_gradient2.size());
-        utils::zero_arr((double*)std::addressof(
-                                model_or_gradient3[i][0]),
-                        model_or_gradient3.size());
-    }
-    
-    for(uint i = 0; i < num_nodes; ++i) {
-        round1[i] = 0;
-        round2[i] = 0;
-        round3[i] = 0;
-    }
-    
-    for(uint i = 0; i < num_nodes; ++i) {
-      for(uint j = 0; j < last_round1.size(); ++j) {
-        last_round1[i][j] = 0;
-        last_round2[i][j] = 0;
-        last_round3[i][j] = 0;
-      }
-    }
-    
-    put_with_completion();  // end of initialization
-    sync_with_members();
-}

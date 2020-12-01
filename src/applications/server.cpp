@@ -130,6 +130,12 @@ int main(int argc, char* argv[]) {
 		  << ml_model_name << std::endl;
 	exit(1);
       }
+
+      std::cout << "members= " << std::endl;
+      for (auto member : members) {
+	std::cout << member << " ";
+      }
+      std::cout << std::endl;
       
       sst::MLSST* ml_sst;
       if(sgd_type == "sync" || sgd_type == "async") {
@@ -145,12 +151,14 @@ int main(int argc, char* argv[]) {
 		  << sgd_type << std::endl;
 	exit(1);
       }
-      
+      std::cout << "server #1" << std::endl;
       ml_sst->connect_ml_model_to_ml_sst();
+      std::cout << "server #2" << std::endl;
 
       utils::ml_stat_t ml_stat(trial_num, num_nodes, num_epochs,
 			       alpha, decay, batch_size, node_rank,
 			       ml_sst, ml_model);
+      std::cout << "server #3" << std::endl;
       server::server* srv;
       if(sgd_type == "sync") {
 	srv = new server::sync_server(ml_model, ml_sst, ml_stat);
@@ -163,9 +171,11 @@ int main(int argc, char* argv[]) {
 		  << sgd_type << std::endl;
 	exit(1);
       }
+      std::cout << "server #4" << std::endl;
 
       // Train
       srv->train(num_epochs);
+      std::cout << "server #5" << std::endl;
       
       std::cout << "trial_num " << trial_num << " done." << std::endl;
       std::cout << "Collecting results..." << std::endl;

@@ -126,7 +126,7 @@ int main(int argc, char* argv[]) {
 		  << ml_model_name << std::endl;
 	exit(1);
       }
-
+      
       sst::MLSST* ml_sst;
       if(sgd_type == "sync" || sgd_type == "async") {
 	ml_sst = new sst::MLSST_NOBUF(std::vector<uint32_t>{0, node_rank},
@@ -143,12 +143,14 @@ int main(int argc, char* argv[]) {
 		  << sgd_type << std::endl;
 	exit(1);
       }
-      
+      std::cout << "worker #1" << std::endl;
       ml_sst->connect_ml_model_to_ml_sst();
-
+      std::cout << "worker #2" << std::endl;
+      
       utils::ml_stat_t ml_stat(trial_num, num_nodes, num_epochs,
 			       alpha, decay, batch_size, node_rank,
 			       ml_sst, ml_model);
+      std::cout << "worker #3" << std::endl;
       worker::worker* wrk;
       if(sgd_type == "sync") {
 	wrk = new worker::sync_worker(ml_model, ml_sst,
@@ -164,9 +166,11 @@ int main(int argc, char* argv[]) {
 		  << ml_model_name << std::endl;
 	exit(1);
       }
+      std::cout << "worker #4" << std::endl;
 
       // Train
       wrk->train(num_epochs);
+      std::cout << "worker #5" << std::endl;
       
       std::cout << "trial_num " << trial_num << " done." << std::endl;
       std::cout << "Collecting results..." << std::endl;

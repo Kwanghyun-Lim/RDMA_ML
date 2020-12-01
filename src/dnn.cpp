@@ -22,7 +22,6 @@ ml_model::deep_neural_network::deep_neural_network(
 	     init_model_file,
 	     has_buffers,
 	     is_worker,
-	     0, // model size in ml_model will be updated in constructor.
 	     (alpha / dataset.num_parts),
 	     batch_size,
 	     (batch_size * dataset.num_parts)),

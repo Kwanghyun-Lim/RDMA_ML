@@ -14,7 +14,6 @@ public:
 	   const std::string init_model_file,
 	   const bool has_buffers,
 	   const bool is_worker,
-	   size_t model_size,
 	   double alpha,
 	   const size_t batch_size,
 	   const size_t aggregate_batch_size);
@@ -72,9 +71,10 @@ protected:
   const bool has_buffers;
   const bool is_worker;
   
-  size_t model_size;
-  double* model;
-  double* gradient;
+  // will be updated by derived class
+  size_t model_size = 0; 
+  double* model = NULL;
+  double* gradient = NULL;
   std::vector<std::vector<double*>> grad_matrix;
 
   double alpha;

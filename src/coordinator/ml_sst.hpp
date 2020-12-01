@@ -16,7 +16,7 @@ namespace sst {
 class MLSST {
 public:
   MLSST(const bool has_buf,
-	const int my_node_id,
+	const int my_rank,
 	const int num_nodes,
 	ml_model::ml_model* ml_model);
 
@@ -41,7 +41,7 @@ public:
   virtual uint64_t get_latest_gradient_version_num(int node_id) const = 0;
   virtual void print() = 0;
   const bool get_has_buf() const;
-  const int get_my_node_id() const;
+  const int get_my_rank() const;
   const int get_num_nodes() const;
   const ml_model::ml_model* get_ml_model_ptr() const;
 
@@ -51,7 +51,7 @@ public:
   
 protected:  
   const bool has_buf;
-  const int my_node_id;
+  const int my_rank;
   const uint32_t num_nodes;
   ml_model::ml_model* ml_model;
 };
@@ -59,7 +59,7 @@ protected:
 class MLSST_NOBUF : public SST<MLSST_NOBUF>, public MLSST {
 public:
   MLSST_NOBUF(const std::vector<uint32_t>& members,
-	      const uint32_t my_node_id,
+	      const uint32_t my_rank,
 	      const size_t num_params,
 	      const uint32_t num_nodes,
 	      ml_model::ml_model* ml_model);
@@ -101,7 +101,7 @@ private:
 class MLSST_BUF : public SST<MLSST_BUF>, public MLSST {
 public:
   MLSST_BUF(const std::vector<uint32_t>& members,
-	    const uint32_t my_node_id,
+	    const uint32_t my_rank,
 	    const size_t num_params,
 	    const uint32_t num_nodes,
 	    ml_model::ml_model* ml_model);

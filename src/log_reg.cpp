@@ -23,8 +23,6 @@ ml_model::multinomial_log_reg::multinomial_log_reg(
 	     init_model_file,
 	     has_buffers,
 	     is_worker,
-	     (dataset.training_labels.num_classes
-	      * dataset.training_images.num_pixels),
 	     (alpha / dataset.num_parts),
 	     batch_size,
 	     (batch_size * dataset.num_parts)),
@@ -38,6 +36,8 @@ ml_model::multinomial_log_reg::multinomial_log_reg(
     gamma(gamma),
     decay(decay),
     num_model_updates(0) {
+  model_size = (dataset.training_labels.num_classes
+		      * dataset.training_images.num_pixels);
 }
 
 ml_model::multinomial_log_reg::~multinomial_log_reg() {
