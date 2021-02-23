@@ -1,12 +1,9 @@
 # RDMA_ML
+This is a research project of Cornell led by Kwanghyun Lim and it is a work in progress.
+If you have any question, feel free to contact me. (kwanghyun@cs.cornell.edu)
+
 ## How to get optimal loss and optimal model for convergence checking on logistic regression
 We used SVRG to get optimal loss and optimal model under a single node with Python code.
-The hyper-parameter setup with SVRG are below.
-### MNIST
-epochs= , batch size= , lr= , decay= , regularizer= ,
-
-### MNIST RFF
-epochs= , batch size= , lr= , decay= , regularizer= ,
 
 ## Grid search for async hyper-parameters
 ### MNIST
