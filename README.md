@@ -1,5 +1,5 @@
 # RDMA_ML
-This is a research project of Cornell led by Kwanghyun Lim, and it is a work in progress.
+This is a research project of Cornell University led by Kwanghyun Lim, and it is a work in progress.
 If you have any question, feel free to contact me. (kwanghyun@cs.cornell.edu)
 
 ## How to get optimal loss and optimal model for convergence checking on logistic regression
